@@ -1,0 +1,54 @@
+# dbt_project/dbt_project.yml
+
+name: 'nfl_batchgineering'
+version: '1.0.0'
+config-version: 2
+
+# This setting configures which "profile" dbt uses for this project.
+profile: 'nfl_batchgineering'
+
+# These configurations specify where dbt should look for different types of files.
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Configuring models
+models:
+  nfl_analytics:
+    # Config indicated by + and applies to all files under models/example/
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
+
+# Seeds configuration
+seeds:
+  nfl_analytics:
+    +schema: seeds
+
+# Tests
+tests:
+  nfl_analytics:
+    +store_failures: false
+    +schema: tests
+
+# Macros for common patterns
+vars:
+  # Current season for incremental models
+  current_season: 2025
+  # Number of seasons to look back for features
+  lookback_seasons: 10
+  # Minimum games for statistical significance
+  min_games_threshold: 8
