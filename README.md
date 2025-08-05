@@ -47,10 +47,10 @@ nfl-prediction-system/
 ## Phase 1: Infrastructure Setup (4 hours)
 
 ### 1.1 Repository & Environment Setup (1 hour)
-- [ ] Initialize GitHub repository with proper `.gitignore`
-- [ ] Set up `uv` for dependency management
-- [ ] Configure `ruff` for code formatting/linting
-- [ ] Create basic `pyproject.toml`
+- [x] Initialize GitHub repository with proper `.gitignore`
+- [x] Set up `uv` for dependency management
+- [x] Configure `ruff` for code formatting/linting
+- [x] Create basic `pyproject.toml`
 
 ### 1.2 Snowflake Setup (1 hour)
 - [ ] Create Snowflake trial account
