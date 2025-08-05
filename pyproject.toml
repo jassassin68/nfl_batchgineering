@@ -1,0 +1,59 @@
+# pyproject.toml - Main configuration file for uv and ruff
+
+[project]
+name = "nfl_batchgineering"
+version = "0.1.0"
+description = "NFL player stats and team outcome prediction system"
+authors = [
+    {name = "Jeff Asselin", email = "your.email@example.com"},
+]
+dependencies = [
+    "nfl-data-py>=0.3.0",
+    "polars>=0.20.0",
+    "xgboost>=2.0.0",
+    "scikit-learn>=1.4.0",
+    "snowflake-connector-python>=3.6.0",
+    "dagster>=1.5.0",
+    "dagster-snowflake>=0.21.0",
+    "dbt-snowflake>=1.7.0",
+    "python-dotenv>=1.0.0",
+    "loguru>=0.7.0",
+]
+
+requires-python = ">=3.11"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
