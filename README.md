@@ -65,18 +65,22 @@ nfl-prediction-system/
   ```
 - [ ] Configure connection parameters
 
-### 1.3 External Tables Setup (1 hour)
-- [ ] Research nflverse GitHub release URLs for parquet files
-- [ ] Create external tables pointing to nflverse data:
-  ```sql
-  -- External tables for direct GitHub access
-  CREATE EXTERNAL TABLE ext_play_by_play LOCATION='s3://nflverse-data/...'
-  CREATE EXTERNAL TABLE ext_player_stats LOCATION='s3://nflverse-data/...'
-  CREATE EXTERNAL TABLE ext_schedules LOCATION='s3://nflverse-data/...'
-  CREATE EXTERNAL TABLE ext_rosters LOCATION='s3://nflverse-data/...'
+### 1.3 Simple Data Loading (1 hour)
+- [ ] Create `training_data_loader.py` using polars + DuckDB for performance
+- [ ] Set up Snowflake table structures for training data
+- [ ] Bulk download historical data (3-5 years) from nflverse GitHub URLs:
+  ```python
+  loader = TrainingDataLoader()
+  loader.load_all_training_data([2019, 2020, 2021, 2022, 2023, 2024])
   ```
-- [ ] Test external table connectivity and performance
-- [ ] Validate data structure matches expectations
+- [ ] Load data to Snowflake native tables using fast parquet + COPY INTO method
+- [ ] Validate data structure and completeness with DuckDB-powered analytics
+- [ ] Verify 3-5 years of complete training data loaded successfully
+
+**Key Features:**
+- **Training-focused**: Simple bulk replacement loads, no incremental complexity
+- **High performance**: polars + DuckDB instead of pandas for 5-10x speed improvement
+- **Future-ready**: Easy to enhance for weekly incremental updates post-training
 
 ### 1.4 dbt Setup (1 hour)
 - [ ] Install dbt-snowflake
@@ -93,16 +97,18 @@ Clean and standardize data from external tables (materialized as VIEWS):
 ```sql
 -- models/staging/sources.yml
 sources:
-  - name: external
-    description: External tables pointing to nflverse GitHub data
+  - name: raw
+    description: Native Snowflake tables loaded from nflverse via bulk Python loading
+    database: NFL_ANALYTICS
+    schema: RAW
     tables:
-      - name: ext_play_by_play
-      - name: ext_player_stats
-      - name: ext_schedules
-      - name: ext_rosters
+      - name: player_stats
+      - name: play_by_play
+      - name: schedules
+      - name: rosters
 
 -- models/staging/stg_play_by_play.sql
--- Read from external table, standardize columns, basic filtering
+-- Read from native Snowflake tables, standardize columns, basic filtering
 SELECT 
   game_id,
   season, 
@@ -110,10 +116,10 @@ SELECT
   UPPER(TRIM(posteam)) AS posteam,
   CASE WHEN rush_attempt = 1 THEN TRUE ELSE FALSE END AS is_rush,
   epa,
-  -- Include external table metadata
-  source_filename,
-  CURRENT_TIMESTAMP() AS processed_at
-FROM {{ source('external', 'ext_play_by_play') }}
+  -- Include load metadata
+  load_type,
+  loaded_at
+FROM {{ source('raw', 'play_by_play') }}
 WHERE season >= {{ var('current_season') - var('lookback_seasons') }}
 
 -- models/staging/stg_player_stats.sql  
@@ -711,29 +717,6 @@ SELECT * FROM defensive_rankings
 - Complete Phases 4-5 (ML + Orchestration)
 - First working models generating predictions
 - Automated pipeline running
-
-## Success Metrics
-- [ ] Data pipeline refreshes automatically within $50/month budget
-- [ ] Models generate predictions for next week's games
-- [ ] Pipeline processes 5+ years of historical data efficiently
-- [ ] Code is well-documented and AI assistant-friendly
-- [ ] Predictions include confidence intervals/uncertainty estimates
-
-## Budget Considerations
-- **Snowflake**: Should stay under $30-40/month with proper warehouse sizing
-- **Python dependencies**: Free (using open source stack)
-- **Development time**: 20 hours target
-
-## Getting Started - First Steps
-1. Clone repository template
-2. Set up Snowflake trial account  
-3. Configure local development environment with uv
-4. Run initial data ingestion for 2023-2024 seasons
-5. Build first dbt staging models
-6. Create simple player stat prediction model
-
-This plan balances your requirements for SQL-first processing, modern Python tooling, and cost-effectiveness while building toward production-ready ML predictions.
-
 
 ## Success Metrics
 - [ ] External tables successfully read nflverse data with <$50/month total costs
