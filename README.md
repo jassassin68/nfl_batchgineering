@@ -63,7 +63,7 @@ nfl-prediction-system/
   CREATE SCHEMA NFL_ANALYTICS.MARTS;      -- Final ML datasets (tables)
   CREATE SCHEMA NFL_ANALYTICS.ML;         -- ML artifacts/predictions
   ```
-- [ ] Configure connection parameters
+- [x] Configure connection parameters
 
 ### 1.3 Simple Data Loading (1 hour)
 - [ ] Create `training_data_loader.py` using polars + DuckDB for performance
