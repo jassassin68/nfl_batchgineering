@@ -53,8 +53,8 @@ nfl-prediction-system/
 - [x] Create basic `pyproject.toml`
 
 ### 1.2 Snowflake Setup (1 hour)
-- [ ] Create Snowflake trial account
-- [ ] Set up database/schema structure:
+- [x] Create Snowflake trial account
+- [x] Set up database/schema structure:
   ```sql
   CREATE DATABASE NFL_ANALYTICS;
   CREATE SCHEMA NFL_ANALYTICS.RAW;        -- External tables pointing to nflverse
