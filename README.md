@@ -66,20 +66,16 @@ nfl-prediction-system/
 - [x] Configure connection parameters
 
 ### 1.3 Simple Data Loading (1 hour)
-- [ ] Create `training_data_loader.py` using polars + DuckDB for performance
-- [ ] Set up Snowflake table structures for training data
-- [ ] Bulk download historical data (3-5 years) from nflverse GitHub URLs:
-  ```python
-  loader = TrainingDataLoader()
-  loader.load_all_training_data([2019, 2020, 2021, 2022, 2023, 2024])
-  ```
-- [ ] Load data to Snowflake native tables using fast parquet + COPY INTO method
-- [ ] Validate data structure and completeness with DuckDB-powered analytics
-- [ ] Verify 3-5 years of complete training data loaded successfully
+- [x] Create `training_data_loader.py` using polars + DuckDB for performance
+- [x] Set up Snowflake table structures for training data
+- [x] Bulk download historical data (10 years) from nflverse GitHub URLs:
+- [x] Load data to Snowflake native tables using fast parquet + COPY INTO method
+- [x] Validate data structure and completeness with Snowflake-powered analytics
+- [x] Verify 10 years of complete training data loaded successfully
 
 **Key Features:**
 - **Training-focused**: Simple bulk replacement loads, no incremental complexity
-- **High performance**: polars + DuckDB instead of pandas for 5-10x speed improvement
+- **High performance**: polars + Snowflake-native instead of pandas for 5-10x speed improvement
 - **Future-ready**: Easy to enhance for weekly incremental updates post-training
 
 ### 1.4 dbt Setup (1 hour)
