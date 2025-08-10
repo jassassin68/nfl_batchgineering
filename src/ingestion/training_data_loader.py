@@ -66,7 +66,13 @@ class TrainingDataLoader:
     # Dataset URLs - simplified structure
     DATASET_URLS = {
         'play_by_play': 'https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{year}.parquet',
-        'rosters': 'https://github.com/nflverse/nflverse-data/releases/download/rosters/roster_{year}.parquet'
+        'rosters': 'https://github.com/nflverse/nflverse-data/releases/download/rosters/roster_{year}.parquet',
+        'team_summary_stats': 'https://github.com/nflverse/nflverse-data/releases/download/stats_team/stats_team_regpost_{year}.parquet',
+        'player_summary_stats': 'https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_regpost_{year}.parquet',
+        # only a single file, can be a one time load: 'players': 'https://github.com/nflverse/nflverse-data/releases/download/rosters/roster_{year}.parquet',
+        'play_by_play_participation': 'https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_{year}.parquet',
+        # only a single file, can be a one time load: 'contracts': 'https://github.com/nflverse/nflverse-data/releases/download/rosters/roster_{year}.parquet',
+        'injuries': 'https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_{year}.parquet'
     }
     
     # Snowflake type mapping
@@ -211,12 +217,25 @@ class TrainingDataLoader:
             # Parse parquet file
             df = pl.read_parquet(content)
             
-            # Add metadata columns more efficiently
-            df = df.with_columns([
-                pl.lit(year).alias('source_year').cast(pl.Int32),
-                pl.lit('BULK_TRAINING').alias('load_type'),
-                pl.lit(datetime.now()).alias('loaded_at').cast(pl.Datetime)
+            # Log original columns and types for debugging
+            logger.debug(f"Original schema ({len(df.columns)} columns):")
+            for col, dtype in list(df.schema.items())[:5]:  # Show first 5
+                logger.debug(f"  {col}: {dtype}")
+            
+            # Convert ALL columns to strings to avoid any type issues
+            logger.info(f"Converting all {len(df.columns)} columns to VARCHAR/string format...")
+            df = df.select([
+                pl.col(col).cast(pl.Utf8).alias(col) for col in df.columns
             ])
+            
+            # Add metadata columns (also as strings for consistency)
+            df = df.with_columns([
+                pl.lit(str(year)).alias('source_year'),
+                pl.lit('BULK_TRAINING').alias('load_type'),
+                pl.lit(datetime.now().isoformat()).alias('loaded_at')
+            ])
+            
+            logger.debug(f"After conversion: all {len(df.columns)} columns are now VARCHAR")
             
             duration = time.time() - start_time
             size_mb = downloaded / (1024 * 1024)
@@ -224,8 +243,8 @@ class TrainingDataLoader:
             
             logger.success(
                 f"✅ Downloaded {dataset} {year}: "
-                f"{len(df):,} rows, {size_mb:.1f}MB in {duration:.1f}s "
-                f"({rows_per_sec:.0f} rows/sec)"
+                f"{len(df):,} rows, {len(df.columns)} columns (all VARCHAR), "
+                f"{size_mb:.1f}MB in {duration:.1f}s ({rows_per_sec:.0f} rows/sec)"
             )
             
             return df
@@ -239,49 +258,25 @@ class TrainingDataLoader:
     
     def _clean_dataframe_for_snowflake(self, df: pl.DataFrame) -> pl.DataFrame:
         """
-        Prepare DataFrame for Snowflake by handling complex types
-        More efficient than the original implementation
+        Prepare DataFrame for Snowflake - simplified since all columns are already strings
         """
-        logger.debug(f"Cleaning DataFrame with {len(df.columns)} columns, {len(df)} rows")
+        logger.debug(f"DataFrame already cleaned: {len(df.columns)} VARCHAR columns, {len(df)} rows")
         
-        # Identify columns that need conversion
-        columns_to_convert = []
-        for col_name in df.columns:
-            dtype = df[col_name].dtype
-            
-            # Check for complex types that Snowflake can't handle directly
-            if isinstance(dtype, (pl.List, pl.Struct, pl.Object)):
-                columns_to_convert.append(col_name)
-                logger.debug(f"Converting complex column '{col_name}' ({dtype}) to string")
-            # Also check for Null type columns
-            elif isinstance(dtype, pl.Null):
-                columns_to_convert.append(col_name)
-                logger.debug(f"Converting null column '{col_name}' to string")
+        # Since we're converting everything to strings in download_year_data,
+        # no additional cleaning is needed
         
-        # Apply conversions if needed
-        if columns_to_convert:
-            df = df.with_columns([
-                pl.col(col).cast(pl.Utf8) for col in columns_to_convert
-            ])
-            logger.debug(f"Converted {len(columns_to_convert)} complex columns to strings")
-        
-        # Log sample of data for debugging
-        logger.debug(f"Sample data (first row): {df.head(1).to_dicts()}")
+        # Log sample of data for debugging (only in debug mode)
+        if logger._core.min_level <= 10:  # DEBUG level
+            sample = df.head(1).to_dicts()
+            if sample:
+                logger.debug(f"Sample row: {list(sample[0].keys())[:5]} ...")  # Just show first 5 column names
         
         return df
     
     def _get_snowflake_type(self, polars_dtype: pl.DataType) -> str:
-        """Map Polars data type to Snowflake SQL type"""
-        # Direct type mapping
-        for pl_type, sf_type in self.POLARS_TO_SNOWFLAKE.items():
-            if isinstance(polars_dtype, type(pl_type)):
-                return sf_type
-        
-        # Handle complex types
-        if isinstance(polars_dtype, (pl.List, pl.Struct, pl.Object)):
-            return "VARIANT"
-        
-        # Default fallback
+        """Map Polars data type to Snowflake SQL type - simplified since we use all VARCHAR"""
+        # Since we're converting everything to strings, this is now just for reference
+        # or if you want to switch back to typed columns later
         return "VARCHAR"
     
     def load_to_snowflake(self, df: pl.DataFrame, table_name: str, mode: str = "REPLACE") -> LoadResult:
@@ -423,7 +418,7 @@ class TrainingDataLoader:
             )
     
     def _ensure_table_exists(self, cursor, table_name: str, sample_df: pl.DataFrame) -> None:
-        """Create table if it doesn't exist with proper schema"""
+        """Create table if it doesn't exist - all columns as VARCHAR for simplicity"""
         # Check existence
         cursor.execute(f"""
             SELECT COUNT(*) 
@@ -434,13 +429,34 @@ class TrainingDataLoader:
         
         if cursor.fetchone()[0] > 0:
             logger.debug(f"Table {table_name} already exists")
+            
+            # Check if metadata columns exist and add them if not
+            cursor.execute(f"""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'NFLVERSE' 
+                AND TABLE_NAME = '{table_name}'
+            """)
+            existing_columns = [row[0].upper() for row in cursor.fetchall()]
+            
+            # Add metadata columns if they don't exist (all as VARCHAR)
+            metadata_columns = ['SOURCE_YEAR', 'LOAD_TYPE', 'LOADED_AT']
+            
+            for col_name in metadata_columns:
+                if col_name not in existing_columns:
+                    try:
+                        alter_sql = f"ALTER TABLE {table_name} ADD COLUMN {col_name} VARCHAR"
+                        cursor.execute(alter_sql)
+                        logger.info(f"Added metadata column {col_name} to {table_name}")
+                    except Exception as e:
+                        logger.debug(f"Could not add column {col_name}: {e}")
+            
             return
         
-        # Generate CREATE TABLE DDL
+        # Generate CREATE TABLE DDL - ALL columns as VARCHAR
         columns = []
         for col_name in sample_df.columns:
-            sf_type = self._get_snowflake_type(sample_df[col_name].dtype)
-            columns.append(f'"{col_name}" {sf_type}')
+            columns.append(f'"{col_name}" VARCHAR')
         
         create_ddl = f"""
             CREATE TABLE IF NOT EXISTS {table_name} (
@@ -449,7 +465,7 @@ class TrainingDataLoader:
         """
         
         cursor.execute(create_ddl)
-        logger.info(f"✅ Created table {table_name} with {len(columns)} columns")
+        logger.info(f"✅ Created table {table_name} with {len(columns)} VARCHAR columns")
     
     def bulk_load_dataset(self, dataset: str, years: List[int]) -> LoadResult:
         """
@@ -553,7 +569,7 @@ class TrainingDataLoader:
             # Get all tables in schema
             cursor.execute("""
                 SELECT TABLE_NAME 
-                FROM INFORMATION_SCHEMA.TABLES 
+                FROM SNOWFLAKE.INFORMATION_SCHEMA.TABLES 
                 WHERE TABLE_SCHEMA = 'NFLVERSE'
                 ORDER BY TABLE_NAME
             """)
@@ -561,33 +577,82 @@ class TrainingDataLoader:
             
             for table in tables:
                 try:
-                    # Comprehensive validation query - Snowflake compatible
+                    # First, get column information to check what columns exist
                     cursor.execute(f"""
-                        SELECT 
-                            COUNT(*) as row_count,
-                            SUM(CASE WHEN source_year IS NULL THEN 1 ELSE 0 END) as missing_year,
-                            MIN(source_year) as min_year,
-                            MAX(source_year) as max_year,
-                            COUNT(DISTINCT source_year) as unique_years,
-                            MAX(loaded_at) as last_load_time
-                        FROM {table}
+                        SELECT COLUMN_NAME 
+                        FROM SNOWFLAKE.INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'NFLVERSE' 
+                        AND TABLE_NAME = '{table}'
                     """)
+                    columns = [row[0].upper() for row in cursor.fetchall()]
+                    
+                    # Build query based on available columns
+                    if 'SOURCE_YEAR' in columns:
+                        # Full validation with source_year
+                        cursor.execute(f"""
+                            SELECT 
+                                COUNT(*) as row_count,
+                                SUM(CASE WHEN source_year IS NULL THEN 1 ELSE 0 END) as missing_year,
+                                MIN(source_year) as min_year,
+                                MAX(source_year) as max_year,
+                                COUNT(DISTINCT source_year) as unique_years,
+                                MAX(loaded_at) as last_load_time
+                            FROM RAW.NFLVERSE.{table}
+                        """)
+                    elif 'SEASON' in columns:
+                        # Use season column if source_year doesn't exist
+                        cursor.execute(f"""
+                            SELECT 
+                                COUNT(*) as row_count,
+                                SUM(CASE WHEN season IS NULL THEN 1 ELSE 0 END) as missing_year,
+                                MIN(season) as min_year,
+                                MAX(season) as max_year,
+                                COUNT(DISTINCT season) as unique_years,
+                                MAX(CASE WHEN 'LOADED_AT' IN ({','.join([f"'{c}'" for c in columns])}) 
+                                    THEN loaded_at ELSE NULL END) as last_load_time
+                            FROM RAW.NFLVERSE.{table}
+                        """)
+                    else:
+                        # Basic validation without year information
+                        cursor.execute(f"""
+                            SELECT 
+                                COUNT(*) as row_count,
+                                0 as missing_year,
+                                NULL as min_year,
+                                NULL as max_year,
+                                0 as unique_years,
+                                NULL as last_load_time
+                            FROM RAW.NFLVERSE.{table}
+                        """)
                     
                     row = cursor.fetchone()
                     
+                    # Handle NULL values in the results
+                    row_count = row[0] or 0
+                    missing_year = row[1] or 0
+                    min_year = row[2]
+                    max_year = row[3]
+                    unique_years = row[4] or 0
+                    last_load = row[5]
+                    
                     validation_results[table] = {
-                        'row_count': row[0],
-                        'missing_year_count': row[1] or 0,
-                        'year_range': f"{row[2]}-{row[3]}" if row[2] else "N/A",
-                        'unique_years': row[4] or 0,
-                        'last_loaded': row[5].strftime('%Y-%m-%d %H:%M:%S') if row[5] else "Unknown",
-                        'status': '✅' if row[0] > 0 else '⚠️'
+                        'row_count': row_count,
+                        'missing_year_count': missing_year,
+                        'year_range': f"{min_year}-{max_year}" if min_year and max_year else "N/A",
+                        'unique_years': unique_years,
+                        'last_loaded': last_load.strftime('%Y-%m-%d %H:%M:%S') if last_load else "Unknown",
+                        'status': '✅' if row_count > 0 else '⚠️'
                     }
+                    
+                    # Build info message
+                    if min_year and max_year:
+                        year_info = f"{unique_years} years ({min_year}-{max_year})"
+                    else:
+                        year_info = "year info not available"
                     
                     logger.info(
                         f"{validation_results[table]['status']} {table}: "
-                        f"{row[0]:,} rows, "
-                        f"{row[4] or 0} years ({row[2]}-{row[3]})"
+                        f"{row_count:,} rows, {year_info}"
                     )
                     
                 except Exception as e:
@@ -596,6 +661,17 @@ class TrainingDataLoader:
                         'error': str(e)
                     }
                     logger.error(f"❌ {table}: Validation failed - {e}")
+        
+        # Summary
+        total_rows = sum(v.get('row_count', 0) for v in validation_results.values() 
+                        if isinstance(v.get('row_count'), int))
+        successful_tables = sum(1 for v in validation_results.values() 
+                               if v.get('status') == '✅')
+        
+        logger.info(f"\n📊 VALIDATION SUMMARY:")
+        logger.info(f"  Tables validated: {len(validation_results)}")
+        logger.info(f"  Successful tables: {successful_tables}")
+        logger.info(f"  Total rows across all tables: {total_rows:,}")
         
         return validation_results
     
@@ -631,8 +707,8 @@ def main():
         # Use context manager for automatic cleanup
         with TrainingDataLoader() as loader:
             # Configure years to load
-            training_years = [2024]  # Start with just one year for testing
-            # training_years = list(range(2019, 2025))  # Full dataset
+            # training_years = [2024]  # Start with just one year for testing
+            training_years = list(range(2014, 2025))  # Full dataset
             
             logger.info(f"🎯 Loading data for years: {training_years}")
             
