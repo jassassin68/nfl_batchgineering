@@ -218,3 +218,6 @@ yarn-error.log*
 generated/
 output/
 exports/
+
+# Kiro IDE specific
+.kiro/
