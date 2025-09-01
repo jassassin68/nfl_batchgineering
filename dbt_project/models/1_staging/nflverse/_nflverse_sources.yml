@@ -1,0 +1,19 @@
+# models/1_staging/nflverse/_nflverse_sources.yml
+sources:
+  - name: nfl_verse_raw
+    description: The schema where raw data loaded from nflverse source via bulk Python loading are stored.
+    database: raw
+    schema: nflverse
+    tables:
+      - name: player_stats
+      - name: play_by_play
+      - name: schedules
+      - name: rosters
+
+
+# -- models/staging/stg_player_stats.sql  
+# -- Clean player statistics, handle position changes
+# -- models/staging/stg_schedules.sql
+# -- Standardize team names, parse betting lines
+# -- models/staging/stg_rosters.sql
+# -- Clean roster data with player mappings
