@@ -35,9 +35,6 @@ CREATE WAREHOUSE IF NOT EXISTS COMPUTE_WH
     WAREHOUSE_SIZE = 'X-SMALL'  -- Start small, can scale up as needed
     AUTO_SUSPEND = 60           -- Auto-suspend after 1 minute of inactivity
     AUTO_RESUME = TRUE          -- Auto-resume when queries are submitted
-    MIN_CLUSTER_COUNT = 1
-    MAX_CLUSTER_COUNT = 3       -- Allow scaling for concurrent workloads
-    SCALING_POLICY = 'STANDARD'
     COMMENT = 'Primary warehouse for NFL prediction system with auto-suspend for cost optimization';
 
 -- Create a separate warehouse for ML training (can be larger when needed)
@@ -46,9 +43,6 @@ CREATE WAREHOUSE IF NOT EXISTS ML_TRAINING_WH
     WAREHOUSE_SIZE = 'X-SMALL'    -- Larger for ML training workloads
     AUTO_SUSPEND = 60           -- Quick suspend for cost control
     AUTO_RESUME = TRUE
-    MIN_CLUSTER_COUNT = 1
-    MAX_CLUSTER_COUNT = 1       -- Single cluster for training
-    SCALING_POLICY = 'STANDARD'
     COMMENT = 'Dedicated warehouse for ML model training and batch predictions';
 
 -- Set default warehouse

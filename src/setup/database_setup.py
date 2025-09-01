@@ -12,6 +12,8 @@ import snowflake.connector
 from snowflake.connector import DictCursor
 import logging
 from datetime import datetime
+from dotenv import load_dotenv
+
 
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -30,8 +32,16 @@ logger = logging.getLogger(__name__)
 class DatabaseSetup:
     """Handles Snowflake database setup and validation"""
     
+    def _load_config(self) -> None:
+        """Load and validate environment configuration"""
+        env_path = Path.cwd() / '.env'
+        if env_path.exists():
+            load_dotenv(env_path)
+            logger.debug(f"Loaded .env from {env_path}")
+    
     def __init__(self):
         """Initialize with connection parameters from environment"""
+        self._load_config()
         self.connection_params = {
             'account': os.getenv('SNOWFLAKE_ACCOUNT'),
             'user': os.getenv('SNOWFLAKE_USER'),
