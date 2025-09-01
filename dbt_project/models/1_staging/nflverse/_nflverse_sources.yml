@@ -5,10 +5,12 @@ sources:
     database: raw
     schema: nflverse
     tables:
-      - name: player_stats
+      - name: injuries
+      - name: player_summary_stats
       - name: play_by_play
-      - name: schedules
+      - name: play_by_play_participation
       - name: rosters
+      - name: team_summary_stats
 
 
 # -- models/staging/stg_player_stats.sql  
