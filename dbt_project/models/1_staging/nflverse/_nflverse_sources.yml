@@ -1,21 +1,219 @@
 # models/1_staging/nflverse/_nflverse_sources.yml
+version: 2
+
 sources:
   - name: nfl_verse_raw
-    description: The schema where raw data loaded from nflverse source via bulk Python loading are stored.
+    description: >
+      Raw NFL data loaded from nflverse GitHub releases via the TrainingDataLoader.
+      All columns are stored as VARCHAR in the raw layer for maximum compatibility
+      and flexibility during the ingestion process.
     database: raw
     schema: nflverse
+    meta:
+      owner: "data-engineering"
+      data_source: "nflverse GitHub releases"
+      load_frequency: "weekly"
+      
     tables:
       - name: injuries
+        description: >
+          NFL player injury reports by week, including practice and game status.
+          Contains injury designations, practice participation, and status updates
+          for all NFL players throughout the season.
+        columns:
+          - name: season
+            description: "NFL season year"
+          - name: game_type
+            description: "Type of game (REG, POST, PRE)"
+          - name: team
+            description: "Team abbreviation"
+          - name: week
+            description: "Week number within the season"
+          - name: gsis_id
+            description: "NFL Game Statistics & Information System player ID"
+          - name: position
+            description: "Player position"
+          - name: full_name
+            description: "Player's full name"
+          - name: report_primary_injury
+            description: "Primary injury listed on injury report"
+          - name: report_status
+            description: "Official injury report status (Out, Doubtful, Questionable, etc.)"
+          - name: practice_status
+            description: "Practice participation status"
+          - name: date_modified
+            description: "Last modified date of the injury report"
+            
       - name: player_summary_stats
+        description: >
+          Comprehensive player statistics aggregated by season, including passing,
+          rushing, receiving, defensive, and special teams statistics. This is the
+          primary source for player performance metrics and fantasy football analysis.
+        columns:
+          - name: player_id
+            description: "Unique player identifier across nflverse datasets"
+          - name: player_name
+            description: "Player name"
+          - name: season
+            description: "NFL season year"
+          - name: season_type
+            description: "Season type (REG, POST, PRE)"
+          - name: recent_team
+            description: "Most recent team the player was on"
+          - name: position
+            description: "Player position"
+          - name: games
+            description: "Number of games played"
+          - name: fantasy_points
+            description: "Standard fantasy points scored"
+          - name: fantasy_points_ppr
+            description: "PPR (Point Per Reception) fantasy points scored"
+          - name: passing_yards
+            description: "Total passing yards"
+          - name: passing_tds
+            description: "Total passing touchdowns"
+          - name: rushing_yards
+            description: "Total rushing yards"
+          - name: rushing_tds
+            description: "Total rushing touchdowns"
+          - name: receiving_yards
+            description: "Total receiving yards"
+          - name: receiving_tds
+            description: "Total receiving touchdowns"
+          - name: targets
+            description: "Total targets (passes thrown to player)"
+          - name: receptions
+            description: "Total receptions"
+            
       - name: play_by_play
+        description: >
+          Detailed play-by-play data for every NFL play, including advanced metrics
+          like EPA (Expected Points Added), WPA (Win Probability Added), and CPOE
+          (Completion Percentage Over Expected). This is the most granular dataset
+          and forms the foundation for advanced analytics.
+        columns:
+          - name: play_id
+            description: "Unique identifier for each play"
+          - name: game_id
+            description: "Unique identifier for each game"
+          - name: season
+            description: "NFL season year"
+          - name: week
+            description: "Week number within the season"
+          - name: game_date
+            description: "Date the game was played"
+          - name: home_team
+            description: "Home team abbreviation"
+          - name: away_team
+            description: "Away team abbreviation"
+          - name: posteam
+            description: "Team with possession of the ball"
+          - name: defteam
+            description: "Team on defense"
+          - name: play_type
+            description: "Type of play (pass, run, punt, etc.)"
+          - name: yards_gained
+            description: "Yards gained on the play"
+          - name: epa
+            description: "Expected Points Added - key advanced metric"
+          - name: wpa
+            description: "Win Probability Added"
+          - name: down
+            description: "Down number (1-4)"
+          - name: ydstogo
+            description: "Yards to go for first down"
+          - name: yardline_100
+            description: "Yard line (distance from opponent's end zone)"
+            
       - name: play_by_play_participation
+        description: >
+          Player participation data for each play, indicating which players were
+          on the field. Essential for calculating snap counts, usage rates, and
+          player involvement metrics.
+        columns:
+          - name: play_id
+            description: "Unique identifier for each play (links to play_by_play)"
+          - name: game_id
+            description: "Unique identifier for each game"
+          - name: season
+            description: "NFL season year"
+          - name: week
+            description: "Week number within the season"
+          - name: player_id
+            description: "Unique player identifier"
+          - name: player_name
+            description: "Player name"
+          - name: position
+            description: "Player position"
+          - name: team
+            description: "Player's team"
+          - name: offense
+            description: "Whether player was on offense (1/0)"
+          - name: defense
+            description: "Whether player was on defense (1/0)"
+          - name: special_teams
+            description: "Whether player was on special teams (1/0)"
+            
       - name: rosters
+        description: >
+          NFL team rosters by week, including player biographical information,
+          physical attributes, and team assignments. Critical for player identification
+          and team composition analysis.
+        columns:
+          - name: season
+            description: "NFL season year"
+          - name: team
+            description: "Team abbreviation"
+          - name: week
+            description: "Week number within the season"
+          - name: position
+            description: "Player position"
+          - name: jersey_number
+            description: "Player's jersey number"
+          - name: full_name
+            description: "Player's full name"
+          - name: gsis_id
+            description: "NFL Game Statistics & Information System player ID"
+          - name: height
+            description: "Player height"
+          - name: weight
+            description: "Player weight"
+          - name: college
+            description: "College attended"
+          - name: years_exp
+            description: "Years of NFL experience"
+          - name: entry_year
+            description: "Year player entered the NFL"
+          - name: rookie_year
+            description: "Player's rookie season"
+          - name: status
+            description: "Player status (Active, Inactive, etc.)"
+            
       - name: team_summary_stats
-
-
-# -- models/staging/stg_player_stats.sql  
-# -- Clean player statistics, handle position changes
-# -- models/staging/stg_schedules.sql
-# -- Standardize team names, parse betting lines
-# -- models/staging/stg_rosters.sql
-# -- Clean roster data with player mappings
+        description: >
+          Team-level statistics aggregated by season, including offensive and
+          defensive performance metrics. Used for team strength analysis and
+          matchup evaluations.
+        columns:
+          - name: team
+            description: "Team abbreviation"
+          - name: season
+            description: "NFL season year"
+          - name: season_type
+            description: "Season type (REG, POST, PRE)"
+          - name: games
+            description: "Number of games played"
+          - name: passing_yards
+            description: "Total team passing yards"
+          - name: rushing_yards
+            description: "Total team rushing yards"
+          - name: total_yards
+            description: "Total offensive yards"
+          - name: passing_tds
+            description: "Total passing touchdowns"
+          - name: rushing_tds
+            description: "Total rushing touchdowns"
+          - name: points_scored
+            description: "Total points scored"
+          - name: points_allowed
+            description: "Total points allowed"

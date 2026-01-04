@@ -1,0 +1,554 @@
+version: 2
+
+models:
+  - name: stgnv_injuries
+    description: >
+      Cleaned and standardized NFL player injury reports. Converts raw VARCHAR data
+      to appropriate types and provides consistent injury status tracking across
+      weeks and seasons. Essential for player availability analysis and lineup decisions.
+    meta:
+      owner: "data-engineering"
+      layer: "staging"
+      data_grain: "one row per player per week per season"
+    columns:
+      - name: season
+        description: "NFL season year"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: game_type
+        description: "Type of game (REG, POST, PRE)"
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['REG', 'POST', 'PRE']
+      - name: team
+        description: "Team abbreviation (3-letter code)"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: week
+        description: "Week number within the season"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: gsis_id
+        description: "NFL Game Statistics & Information System player ID - primary identifier"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: position
+        description: "Player position"
+        data_type: varchar
+      - name: full_name
+        description: "Player's full name"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: report_primary_injury
+        description: "Primary injury listed on official injury report"
+        data_type: varchar
+      - name: report_secondary_injury
+        description: "Secondary injury listed on official injury report"
+        data_type: varchar
+      - name: report_status
+        description: "Official injury report status"
+        data_type: varchar
+        tests:
+          - accepted_values:
+              values: ['Out', 'Doubtful', 'Questionable', 'Probable', 'Full', 'Limited', 'Did Not Participate']
+              config:
+                severity: warn
+      - name: practice_primary_injury
+        description: "Primary injury affecting practice participation"
+        data_type: varchar
+      - name: practice_secondary_injury
+        description: "Secondary injury affecting practice participation"
+        data_type: varchar
+      - name: practice_status
+        description: "Practice participation status"
+        data_type: varchar
+      - name: date_modified
+        description: "Last modified timestamp of the injury report"
+        data_type: varchar
+    tests:
+      - unique:
+          column_name: "season || '-' || game_type || '-' || team || '-' || week || '-' || gsis_id"
+          config:
+            severity: error
+
+  - name: stgnv_player_summary_stats
+    description: >
+      Comprehensive player statistics aggregated by season. This staging model cleans
+      and standardizes all player performance metrics including passing, rushing,
+      receiving, defensive, and special teams statistics. Primary source for fantasy
+      analysis and player performance evaluation.
+    meta:
+      owner: "data-engineering"
+      layer: "staging"
+      data_grain: "one row per player per season per season_type"
+    columns:
+      - name: player_id
+        description: "Unique player identifier across nflverse datasets - primary key"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: season
+        description: "NFL season year"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: season_type
+        description: "Season type (REG, POST, PRE)"
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['REG', 'POST', 'PRE']
+      - name: player_name
+        description: "Player name"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: position
+        description: "Player position"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: position_group
+        description: "Position group (QB, RB, WR, TE, etc.)"
+        data_type: varchar
+      - name: recent_team
+        description: "Most recent team the player was on"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: games
+        description: "Number of games played"
+        data_type: varchar
+      - name: fantasy_points
+        description: "Standard fantasy points scored"
+        data_type: varchar
+      - name: fantasy_points_ppr
+        description: "PPR (Point Per Reception) fantasy points scored"
+        data_type: varchar
+      - name: passing_yards
+        description: "Total passing yards"
+        data_type: varchar
+      - name: passing_tds
+        description: "Total passing touchdowns"
+        data_type: varchar
+      - name: passing_interceptions
+        description: "Total interceptions thrown"
+        data_type: varchar
+      - name: attempts
+        description: "Total pass attempts"
+        data_type: varchar
+      - name: completions
+        description: "Total pass completions"
+        data_type: varchar
+      - name: rushing_yards
+        description: "Total rushing yards"
+        data_type: varchar
+      - name: rushing_tds
+        description: "Total rushing touchdowns"
+        data_type: varchar
+      - name: carries
+        description: "Total rushing attempts"
+        data_type: varchar
+      - name: receiving_yards
+        description: "Total receiving yards"
+        data_type: varchar
+      - name: receiving_tds
+        description: "Total receiving touchdowns"
+        data_type: varchar
+      - name: receptions
+        description: "Total receptions"
+        data_type: varchar
+      - name: targets
+        description: "Total targets (passes thrown to player)"
+        data_type: varchar
+      - name: target_share
+        description: "Percentage of team targets"
+        data_type: varchar
+      - name: air_yards_share
+        description: "Percentage of team air yards"
+        data_type: varchar
+      - name: receiving_epa
+        description: "Expected Points Added on receiving plays"
+        data_type: varchar
+      - name: passing_epa
+        description: "Expected Points Added on passing plays"
+        data_type: varchar
+      - name: rushing_epa
+        description: "Expected Points Added on rushing plays"
+        data_type: varchar
+    tests:
+      - unique:
+          column_name: "player_id || '-' || season || '-' || season_type"
+          config:
+            severity: error
+
+  - name: stgnv_play_by_play
+    description: >
+      Detailed play-by-play data for every NFL play with advanced analytics metrics.
+      This is the most granular dataset containing EPA, WPA, CPOE, and other advanced
+      metrics. Forms the foundation for all advanced football analytics and team/player
+      performance evaluation.
+    meta:
+      owner: "data-engineering"
+      layer: "staging"
+      data_grain: "one row per play"
+    columns:
+      - name: play_id
+        description: "Unique identifier for each play - primary key"
+        data_type: varchar
+        tests:
+          - not_null
+          - unique
+      - name: game_id
+        description: "Unique identifier for each game"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: season
+        description: "NFL season year"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: week
+        description: "Week number within the season"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: game_date
+        description: "Date the game was played"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: home_team
+        description: "Home team abbreviation"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: away_team
+        description: "Away team abbreviation"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: posteam
+        description: "Team with possession of the ball"
+        data_type: varchar
+      - name: defteam
+        description: "Team on defense"
+        data_type: varchar
+      - name: play_type
+        description: "Type of play (pass, run, punt, field_goal, etc.)"
+        data_type: varchar
+      - name: yards_gained
+        description: "Yards gained on the play"
+        data_type: varchar
+      - name: epa
+        description: "Expected Points Added - key advanced metric"
+        data_type: varchar
+      - name: wpa
+        description: "Win Probability Added"
+        data_type: varchar
+      - name: down
+        description: "Down number (1-4)"
+        data_type: varchar
+      - name: ydstogo
+        description: "Yards to go for first down"
+        data_type: varchar
+      - name: yardline_100
+        description: "Yard line (distance from opponent's end zone, 0-100)"
+        data_type: varchar
+      - name: qtr
+        description: "Quarter (1-5, where 5 is overtime)"
+        data_type: varchar
+      - name: passer_player_id
+        description: "Player ID of the passer"
+        data_type: varchar
+      - name: passer_player_name
+        description: "Name of the passer"
+        data_type: varchar
+      - name: receiver_player_id
+        description: "Player ID of the receiver"
+        data_type: varchar
+      - name: receiver_player_name
+        description: "Name of the receiver"
+        data_type: varchar
+      - name: rusher_player_id
+        description: "Player ID of the rusher"
+        data_type: varchar
+      - name: rusher_player_name
+        description: "Name of the rusher"
+        data_type: varchar
+      - name: touchdown
+        description: "Whether the play resulted in a touchdown (1/0)"
+        data_type: varchar
+      - name: pass_touchdown
+        description: "Whether the play was a passing touchdown (1/0)"
+        data_type: varchar
+      - name: rush_touchdown
+        description: "Whether the play was a rushing touchdown (1/0)"
+        data_type: varchar
+      - name: interception
+        description: "Whether the play was an interception (1/0)"
+        data_type: varchar
+      - name: fumble
+        description: "Whether the play involved a fumble (1/0)"
+        data_type: varchar
+      - name: sack
+        description: "Whether the play was a sack (1/0)"
+        data_type: varchar
+      - name: safety
+        description: "Whether the play resulted in a safety (1/0)"
+        data_type: varchar
+      - name: penalty
+        description: "Whether there was a penalty on the play (1/0)"
+        data_type: varchar
+      - name: first_down
+        description: "Whether the play resulted in a first down (1/0)"
+        data_type: varchar
+      - name: complete_pass
+        description: "Whether the pass was completed (1/0)"
+        data_type: varchar
+      - name: pass_attempt
+        description: "Whether the play was a pass attempt (1/0)"
+        data_type: varchar
+      - name: rush_attempt
+        description: "Whether the play was a rush attempt (1/0)"
+        data_type: varchar
+
+  - name: stgnv_play_by_play_participation
+    description: >
+      Player participation data for each play, indicating which players were on the
+      field for offense, defense, or special teams. Essential for calculating snap
+      counts, usage rates, and player involvement metrics. Critical for advanced
+      player analysis and roster construction.
+    meta:
+      owner: "data-engineering"
+      layer: "staging"
+      data_grain: "one row per player per play"
+    columns:
+      - name: play_id
+        description: "Unique identifier for each play (links to play_by_play)"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: game_id
+        description: "Unique identifier for each game"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: season
+        description: "NFL season year"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: week
+        description: "Week number within the season"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: player_id
+        description: "Unique player identifier"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: player_name
+        description: "Player name"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: position
+        description: "Player position"
+        data_type: varchar
+      - name: team
+        description: "Player's team abbreviation"
+        data_type: varchar
+        tests:
+          - not_null
+    tests:
+      - unique:
+          column_name: "play_id || '-' || player_id"
+          config:
+            severity: error
+
+  - name: stgnv_rosters
+    description: >
+      NFL team rosters by week with comprehensive player information. Includes
+      biographical data, physical attributes, and team assignments. Critical for
+      player identification, team composition analysis, and linking players across
+      different datasets.
+    meta:
+      owner: "data-engineering"
+      layer: "staging"
+      data_grain: "one row per player per team per week per season"
+    columns:
+      - name: season
+        description: "NFL season year"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: team
+        description: "Team abbreviation"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: week
+        description: "Week number within the season"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: position
+        description: "Player position"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: jersey_number
+        description: "Player's jersey number"
+        data_type: varchar
+      - name: full_name
+        description: "Player's full name"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: first_name
+        description: "Player's first name"
+        data_type: varchar
+      - name: last_name
+        description: "Player's last name"
+        data_type: varchar
+      - name: gsis_id
+        description: "NFL Game Statistics & Information System player ID - primary identifier"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: height
+        description: "Player height"
+        data_type: varchar
+      - name: weight
+        description: "Player weight in pounds"
+        data_type: varchar
+      - name: college
+        description: "College or university attended"
+        data_type: varchar
+      - name: years_exp
+        description: "Years of NFL experience"
+        data_type: varchar
+      - name: entry_year
+        description: "Year player entered the NFL"
+        data_type: varchar
+      - name: rookie_year
+        description: "Player's rookie season"
+        data_type: varchar
+      - name: status
+        description: "Player roster status (Active, Inactive, etc.)"
+        data_type: varchar
+      - name: birth_date
+        description: "Player's birth date"
+        data_type: varchar
+      - name: depth_chart_position
+        description: "Position on team depth chart"
+        data_type: varchar
+      - name: ngs_position
+        description: "Next Gen Stats position classification"
+        data_type: varchar
+      - name: draft_club
+        description: "Team that drafted the player"
+        data_type: varchar
+      - name: draft_number
+        description: "Overall draft pick number"
+        data_type: varchar
+    tests:
+      - unique:
+          column_name: "season || '-' || team || '-' || week || '-' || gsis_id"
+          config:
+            severity: error
+
+  - name: stgnv_team_summary_stats
+    description: >
+      Team-level statistics aggregated by season, providing comprehensive offensive
+      and defensive performance metrics. Used for team strength analysis, matchup
+      evaluations, and comparative team performance assessment across seasons.
+    meta:
+      owner: "data-engineering"
+      layer: "staging"
+      data_grain: "one row per team per season per season_type"
+    columns:
+      - name: team
+        description: "Team abbreviation - primary identifier"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: season
+        description: "NFL season year"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: season_type
+        description: "Season type (REG, POST, PRE)"
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['REG', 'POST', 'PRE']
+      - name: games
+        description: "Number of games played"
+        data_type: varchar
+      - name: wins
+        description: "Number of wins"
+        data_type: varchar
+      - name: losses
+        description: "Number of losses"
+        data_type: varchar
+      - name: ties
+        description: "Number of ties"
+        data_type: varchar
+      - name: win_pct
+        description: "Win percentage"
+        data_type: varchar
+      - name: points_scored
+        description: "Total points scored by the team"
+        data_type: varchar
+      - name: points_allowed
+        description: "Total points allowed by the team"
+        data_type: varchar
+      - name: point_differential
+        description: "Point differential (scored - allowed)"
+        data_type: varchar
+      - name: passing_yards
+        description: "Total team passing yards"
+        data_type: varchar
+      - name: rushing_yards
+        description: "Total team rushing yards"
+        data_type: varchar
+      - name: total_yards
+        description: "Total offensive yards"
+        data_type: varchar
+      - name: passing_tds
+        description: "Total passing touchdowns"
+        data_type: varchar
+      - name: rushing_tds
+        description: "Total rushing touchdowns"
+        data_type: varchar
+      - name: offensive_tds
+        description: "Total offensive touchdowns"
+        data_type: varchar
+      - name: turnovers_lost
+        description: "Total turnovers lost"
+        data_type: varchar
+      - name: turnovers_gained
+        description: "Total turnovers gained"
+        data_type: varchar
+      - name: turnover_differential
+        description: "Turnover differential (gained - lost)"
+        data_type: varchar
+    tests:
+      - unique:
+          column_name: "team || '-' || season || '-' || season_type"
+          config:
+            severity: error
