@@ -1,0 +1,344 @@
+version: 2
+
+models:
+  - name: int_plays_cleaned
+    description: >
+      Cleaned and enhanced play-by-play data with calculated fields and classifications.
+      Filters out invalid plays (spikes, kneels, timeouts) and adds contextual features
+      for downstream analysis. All numeric fields are properly typed.
+    meta:
+      grain: "one row per play"
+      owner: "data-engineering"
+    config:
+      tags: ['intermediate', 'play_level']
+    columns:
+      - name: play_id
+        description: "Unique identifier for each play"
+        tests:
+          - unique
+          - not_null
+
+      - name: game_id
+        description: "Unique identifier for each game (format: YYYY_WW_AWAY_HOME)"
+        tests:
+          - not_null
+
+      - name: season
+        description: "NFL season year"
+        tests:
+          - not_null
+
+      - name: week
+        description: "Week number within the season (1-18 for regular season)"
+        tests:
+          - not_null
+
+      - name: posteam
+        description: "Team with possession of the ball (abbreviation)"
+        tests:
+          - not_null
+
+      - name: defteam
+        description: "Team on defense (abbreviation)"
+
+      - name: epa
+        description: "Expected Points Added - measures the value of each play"
+
+      - name: epa_per_play
+        description: "Alias for EPA field for clarity in downstream models"
+
+      - name: is_successful_play
+        description: "Binary flag: 1 if EPA > 0 (successful play), 0 otherwise"
+        tests:
+          - accepted_values:
+              values: [0, 1]
+
+      - name: is_explosive_play
+        description: "Binary flag: 1 if pass >= 15 yards OR rush >= 10 yards, 0 otherwise"
+        tests:
+          - accepted_values:
+              values: [0, 1]
+
+      - name: is_scoring_play
+        description: "Binary flag: 1 if play resulted in touchdown, field goal, or safety"
+        tests:
+          - accepted_values:
+              values: [0, 1]
+
+      - name: is_turnover
+        description: "Binary flag: 1 if play resulted in interception or fumble lost"
+        tests:
+          - accepted_values:
+              values: [0, 1]
+
+      - name: air_yards_share
+        description: "Percentage of total yards that came through the air (air_yards / yards_gained)"
+
+      - name: drive_play_number
+        description: "Sequential play number within the drive (1, 2, 3, ...)"
+
+      - name: drive_yards_gained_so_far
+        description: "Total yards gained in the drive up to this point"
+
+      - name: field_zone
+        description: "Field position classification (Red Zone, Green Zone, Opponent Territory, etc.)"
+        tests:
+          - accepted_values:
+              values: ['Red Zone', 'Green Zone', 'Opponent Territory', 'Own Territory', 'Deep Own Territory']
+
+      - name: down_situation
+        description: "Down and distance classification (Third and Short, Third and Medium, etc.)"
+        tests:
+          - accepted_values:
+              values: ['Third and Short', 'Third and Medium', 'Third and Long', 'Fourth Down', 'Early Down']
+
+      - name: score_situation
+        description: "Game score context (One Score Game, Two Score Game, Blowout, Tie Game)"
+        tests:
+          - accepted_values:
+              values: ['One Score Game', 'Two Score Game', 'Blowout', 'Tie Game']
+
+  - name: int_team_offensive_metrics
+    description: >
+      Team-level offensive performance metrics aggregated by week with rolling 4-week averages.
+      Includes EPA metrics, success rates, explosive play rates, efficiency metrics, and more.
+      Used to evaluate offensive strength for predictions.
+    meta:
+      grain: "one row per team per season per week"
+      owner: "data-engineering"
+    config:
+      tags: ['intermediate', 'team_level', 'offensive']
+    columns:
+      - name: team
+        description: "Team abbreviation"
+        tests:
+          - not_null
+
+      - name: season
+        description: "NFL season year"
+        tests:
+          - not_null
+
+      - name: week
+        description: "Week number within the season"
+        tests:
+          - not_null
+
+      - name: total_plays
+        description: "Total offensive plays (pass attempts + rush attempts) in this week"
+        tests:
+          - not_null
+
+      - name: avg_epa_per_play
+        description: "Average EPA per play for the week"
+
+      - name: success_rate
+        description: "Percentage of plays with positive EPA (0.0 to 1.0)"
+
+      - name: explosive_play_rate
+        description: "Percentage of plays that are explosive (pass 15+ or rush 10+)"
+
+      - name: third_down_conversion_rate
+        description: "Percentage of third downs converted to first downs (0.0 to 1.0)"
+
+      - name: red_zone_td_rate
+        description: "Percentage of red zone plays that result in touchdowns (0.0 to 1.0)"
+
+      - name: turnover_rate
+        description: "Percentage of offensive plays that result in turnovers (0.0 to 1.0)"
+
+      - name: rolling_4wk_epa_per_play
+        description: "Rolling 4-week average of EPA per play - key predictive feature"
+
+      - name: rolling_4wk_success_rate
+        description: "Rolling 4-week average of success rate - key predictive feature"
+
+      - name: rolling_4wk_explosive_rate
+        description: "Rolling 4-week average of explosive play rate"
+
+      - name: rolling_4wk_third_down_rate
+        description: "Rolling 4-week average of third down conversion rate"
+
+      - name: rolling_4wk_red_zone_td_rate
+        description: "Rolling 4-week average of red zone touchdown rate"
+
+      - name: rolling_4wk_turnover_rate
+        description: "Rolling 4-week average of turnover rate"
+
+      - name: rolling_4wk_play_count
+        description: "Total plays in the rolling 4-week window - sample size quality indicator"
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - team
+            - season
+            - week
+
+  - name: int_team_defensive_strength
+    description: >
+      Team-level defensive performance metrics aggregated by week with rolling 4-week averages.
+      Includes EPA allowed, success rate allowed, explosive plays allowed, forced turnovers,
+      sack rates, and defensive rankings. Lower EPA/yards/points allowed = better defense.
+    meta:
+      grain: "one row per team per season per week"
+      owner: "data-engineering"
+    config:
+      tags: ['intermediate', 'team_level', 'defensive']
+    columns:
+      - name: team
+        description: "Team abbreviation"
+        tests:
+          - not_null
+
+      - name: season
+        description: "NFL season year"
+        tests:
+          - not_null
+
+      - name: week
+        description: "Week number within the season"
+        tests:
+          - not_null
+
+      - name: total_plays_faced
+        description: "Total offensive plays faced by this defense in this week"
+        tests:
+          - not_null
+
+      - name: avg_epa_allowed
+        description: "Average EPA allowed per play (lower is better)"
+
+      - name: success_rate_allowed
+        description: "Percentage of opponent plays with positive EPA (lower is better)"
+
+      - name: explosive_play_rate_allowed
+        description: "Percentage of opponent plays that are explosive (lower is better)"
+
+      - name: third_down_conversion_rate_allowed
+        description: "Percentage of third downs converted by opponents (lower is better)"
+
+      - name: red_zone_td_rate_allowed
+        description: "Percentage of opponent red zone plays resulting in TDs (lower is better)"
+
+      - name: forced_turnover_rate
+        description: "Percentage of plays forcing turnovers (higher is better)"
+
+      - name: sack_rate
+        description: "Percentage of pass plays resulting in sacks (higher is better)"
+
+      - name: rolling_4wk_epa_allowed
+        description: "Rolling 4-week average of EPA allowed - key predictive feature"
+
+      - name: rolling_4wk_success_rate_allowed
+        description: "Rolling 4-week average of success rate allowed"
+
+      - name: rolling_4wk_explosive_rate_allowed
+        description: "Rolling 4-week average of explosive play rate allowed"
+
+      - name: rolling_4wk_third_down_allowed
+        description: "Rolling 4-week average of third down conversion rate allowed"
+
+      - name: rolling_4wk_red_zone_td_allowed
+        description: "Rolling 4-week average of red zone touchdown rate allowed"
+
+      - name: rolling_4wk_forced_turnover_rate
+        description: "Rolling 4-week average of forced turnover rate"
+
+      - name: rolling_4wk_sack_rate
+        description: "Rolling 4-week average of sack rate"
+
+      - name: rolling_4wk_defensive_play_count
+        description: "Total plays faced in rolling 4-week window - sample size indicator"
+
+      - name: defensive_epa_rank
+        description: "Defensive ranking by EPA allowed (1 = best defense in that week)"
+
+      - name: yards_allowed_rank
+        description: "Defensive ranking by yards allowed per play (1 = best)"
+
+      - name: points_allowed_rank
+        description: "Defensive ranking by points allowed per drive (1 = best)"
+
+      - name: forced_turnover_rank
+        description: "Defensive ranking by forced turnover rate (1 = best)"
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - team
+            - season
+            - week
+
+  - name: int_situational_efficiency
+    description: >
+      Situational efficiency metrics by team, season, and week. Focuses on context-specific
+      performance: red zone, third down, two-minute drill, short yardage, etc. Includes
+      rolling 4-week averages and league rankings.
+    meta:
+      grain: "one row per team per season per week"
+      owner: "data-engineering"
+    config:
+      materialized: table
+      tags: ['intermediate', 'team_level', 'situational']
+    columns:
+      - name: team
+        description: "Team abbreviation"
+        tests:
+          - not_null
+
+      - name: season
+        description: "NFL season year"
+        tests:
+          - not_null
+
+      - name: week
+        description: "Week number within the season"
+        tests:
+          - not_null
+
+      - name: red_zone_plays
+        description: "Number of offensive plays inside opponent's 20-yard line"
+
+      - name: red_zone_td_rate
+        description: "Percentage of red zone plays resulting in touchdowns"
+
+      - name: third_down_attempts
+        description: "Number of third down attempts"
+
+      - name: third_down_conversions
+        description: "Number of third downs converted to first downs"
+
+      - name: third_down_conversion_rate
+        description: "Percentage of third downs converted"
+
+      - name: two_minute_drill_plays
+        description: "Number of plays run in final 2 minutes of half"
+
+      - name: two_minute_drill_epa
+        description: "Average EPA during two-minute drill situations"
+
+      - name: short_yardage_plays
+        description: "Number of plays with 3 or fewer yards to go"
+
+      - name: short_yardage_success_rate
+        description: "Success rate on short yardage situations"
+
+      - name: rolling_4wk_red_zone_td_rate
+        description: "Rolling 4-week average of red zone touchdown rate"
+
+      - name: rolling_4wk_third_down_rate
+        description: "Rolling 4-week average of third down conversion rate"
+
+      - name: rolling_4wk_two_min_epa
+        description: "Rolling 4-week average of two-minute drill EPA"
+
+      - name: rolling_4wk_short_yardage_rate
+        description: "Rolling 4-week average of short yardage success rate"
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - team
+            - season
+            - week
