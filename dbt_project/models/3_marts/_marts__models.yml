@@ -1,0 +1,443 @@
+version: 2
+
+models:
+  - name: mart_predictive_features
+    description: >
+      Unified predictive features combining offensive, defensive, and situational metrics
+      for each team by week. Maps intermediate layer columns to expected feature names
+      for downstream prediction models. Includes efficiency tiers, trends, and composite scores.
+    meta:
+      grain: "one row per team per season per week"
+      owner: "data-engineering"
+      primary_use: "Input features for game prediction models"
+    config:
+      tags: ['marts', 'predictions', 'team_level']
+    columns:
+      - name: team
+        description: "Team abbreviation"
+        tests:
+          - not_null
+
+      - name: season
+        description: "NFL season year"
+        tests:
+          - not_null
+
+      - name: week
+        description: "Week number within the season"
+        tests:
+          - not_null
+
+      # Offensive Features
+      - name: epa_per_play_l4w
+        description: "Rolling 4-week average EPA per play - primary offensive efficiency metric"
+        tests:
+          - not_null
+
+      - name: epa_per_play_adj
+        description: "Weekly average EPA per play (adjusted baseline)"
+
+      - name: success_rate
+        description: "Percentage of plays with positive EPA (0.0 to 1.0)"
+
+      - name: success_rate_l4w
+        description: "Rolling 4-week average success rate"
+
+      - name: explosive_play_rate
+        description: "Rolling 4-week average explosive play rate (pass 15+, rush 10+)"
+
+      - name: pass_epa_adj
+        description: "Rolling 4-week average passing EPA"
+
+      - name: run_epa_adj
+        description: "Rolling 4-week average rushing EPA"
+
+      - name: redzone_epa_adj
+        description: "Rolling 4-week average red zone touchdown rate"
+
+      - name: pass_rate
+        description: "Percentage of plays that are passes (0.0 to 1.0)"
+
+      - name: weather_adjusted_epa_projection
+        description: "EPA adjusted for weather conditions (currently uses 4wk EPA)"
+
+      - name: offensive_matchup_score
+        description: "Composite offensive matchup score (currently uses 4wk EPA)"
+
+      - name: composite_efficiency_score
+        description: "Composite efficiency metric (currently uses success rate)"
+
+      - name: epa_trend
+        description: "EPA trend: weekly EPA minus 4-week average (positive = improving)"
+
+      - name: epa_rolling_volatility
+        description: "Volatility of EPA performance (placeholder: 0.1)"
+
+      - name: efficiency_tier
+        description: "Offensive efficiency classification"
+        tests:
+          - accepted_values:
+              values: ['Elite', 'Good', 'Average', 'Poor']
+
+      - name: weather_resistance_tier
+        description: "Weather resistance classification"
+        tests:
+          - accepted_values:
+              values: ['High', 'Medium', 'Low']
+
+      # Defensive Features
+      - name: season_def_epa_allowed
+        description: "Rolling 4-week average EPA allowed by defense (lower is better)"
+
+      - name: def_epa_rank
+        description: "Defensive ranking by EPA allowed (1 = best defense)"
+
+      - name: def_strength_tier
+        description: "Defensive strength classification"
+        tests:
+          - accepted_values:
+              values: ['Elite', 'Good', 'Average', 'Poor']
+
+      - name: season_def_pass_epa
+        description: "Rolling 4-week average pass EPA allowed"
+
+      - name: season_def_run_epa
+        description: "Rolling 4-week average run EPA allowed"
+
+      - name: def_epa_allowed_l4w
+        description: "Rolling 4-week average total EPA allowed"
+
+      - name: season_def_success_rate_allowed
+        description: "Rolling 4-week average success rate allowed by defense"
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - team
+            - season
+            - week
+
+  - name: mart_game_prediction_features
+    description: >
+      ML-ready feature dataset for game outcome predictions (spreads and totals).
+      Combines home and away team features at the game level with weather, division,
+      and playoff context. This is the primary dataset for training prediction models.
+    meta:
+      grain: "one row per game"
+      owner: "data-engineering"
+      primary_key: "game_id"
+      primary_use: "Training data for spread and totals prediction models"
+    config:
+      materialized: table
+      tags: ['marts', 'predictions', 'game_level']
+    columns:
+      - name: game_id
+        description: "Unique game identifier"
+        tests:
+          - unique
+          - not_null
+
+      - name: season
+        description: "NFL season year"
+        tests:
+          - not_null
+
+      - name: week
+        description: "Week number within the season"
+        tests:
+          - not_null
+
+      - name: home_team
+        description: "Home team abbreviation"
+        tests:
+          - not_null
+
+      - name: away_team
+        description: "Away team abbreviation"
+        tests:
+          - not_null
+
+      - name: home_score
+        description: "Final home team score (target variable)"
+
+      - name: away_score
+        description: "Final away team score (target variable)"
+
+      - name: temp
+        description: "Temperature in Fahrenheit (72 for domes)"
+
+      - name: wind
+        description: "Wind speed in MPH (0 for domes)"
+
+      - name: roof
+        description: "Roof type (dome, closed, outdoors, open)"
+        tests:
+          - accepted_values:
+              values: ['dome', 'closed', 'outdoors', 'open']
+              config:
+                severity: warn
+
+      - name: div_game
+        description: "Binary flag: 1 if division game, 0 otherwise"
+        tests:
+          - accepted_values:
+              values: [0, 1]
+
+      - name: playoff
+        description: "Binary flag: 1 if playoff game, 0 otherwise"
+        tests:
+          - accepted_values:
+              values: [0, 1]
+
+      # Home Team Features
+      - name: home_epa_adj
+        description: "Home team adjusted EPA per play"
+
+      - name: home_epa_l4w
+        description: "Home team rolling 4-week EPA per play"
+
+      - name: home_success_rate
+        description: "Home team success rate"
+
+      - name: home_explosive_rate
+        description: "Home team explosive play rate"
+
+      - name: home_def_epa
+        description: "Home team defensive EPA allowed (lower is better)"
+
+      - name: home_def_rank
+        description: "Home team defensive ranking (1 = best)"
+
+      - name: home_rz_td_rate
+        description: "Home team red zone touchdown rate"
+
+      - name: home_third_conv
+        description: "Home team third down conversion rate"
+
+      # Away Team Features
+      - name: away_epa_adj
+        description: "Away team adjusted EPA per play"
+
+      - name: away_epa_l4w
+        description: "Away team rolling 4-week EPA per play"
+
+      - name: away_success_rate
+        description: "Away team success rate"
+
+      - name: away_explosive_rate
+        description: "Away team explosive play rate"
+
+      - name: away_def_epa
+        description: "Away team defensive EPA allowed (lower is better)"
+
+      - name: away_def_rank
+        description: "Away team defensive ranking (1 = best)"
+
+      - name: away_rz_td_rate
+        description: "Away team red zone touchdown rate"
+
+      - name: away_third_conv
+        description: "Away team third down conversion rate"
+
+  - name: mart_weather_impact_metrics
+    description: >
+      Weather-adjusted team efficiency metrics showing performance differential between
+      good weather and adverse weather conditions. Includes weather resistance tiers
+      and adjustment factors for predictions. Uses league averages when team-specific
+      sample sizes are insufficient.
+    meta:
+      grain: "one row per team per season"
+      owner: "data-engineering"
+      primary_use: "Weather adjustments for game predictions"
+    config:
+      materialized: table
+      tags: ['marts', 'weather', 'team_level']
+    columns:
+      - name: team
+        description: "Team abbreviation"
+        tests:
+          - not_null
+
+      - name: season
+        description: "NFL season year"
+        tests:
+          - not_null
+
+      # Good Weather Performance
+      - name: epa_good_weather
+        description: "Average EPA per play in good weather conditions"
+
+      - name: success_rate_good_weather
+        description: "Success rate in good weather (0.0 to 1.0)"
+
+      - name: pass_epa_good_weather
+        description: "Pass EPA in good weather"
+
+      - name: run_epa_good_weather
+        description: "Run EPA in good weather"
+
+      # Adverse Weather Performance
+      - name: epa_adverse_weather
+        description: "Average EPA per play in adverse weather (wind 15+, temp <=32 or >=85)"
+
+      - name: success_rate_adverse_weather
+        description: "Success rate in adverse weather (0.0 to 1.0)"
+
+      - name: pass_epa_adverse_weather
+        description: "Pass EPA in adverse weather"
+
+      - name: run_epa_adverse_weather
+        description: "Run EPA in adverse weather"
+
+      # Sample Sizes
+      - name: games_good_weather
+        description: "Number of games played in good weather conditions"
+
+      - name: games_adverse_weather
+        description: "Number of games played in adverse weather conditions"
+
+      - name: plays_good_weather
+        description: "Total plays in good weather"
+
+      - name: plays_adverse_weather
+        description: "Total plays in adverse weather"
+
+      # Weather Impact Metrics
+      - name: epa_weather_impact
+        description: "Difference in EPA: good weather minus adverse weather (positive = performs worse in bad weather)"
+
+      - name: success_weather_impact
+        description: "Difference in success rate: good weather minus adverse weather"
+
+      - name: pass_weather_impact
+        description: "Difference in pass EPA between weather conditions"
+
+      - name: run_weather_impact
+        description: "Difference in run EPA between weather conditions"
+
+      # Adjustment Factors
+      - name: epa_weather_adjustment
+        description: "Team-specific EPA adjustment for adverse weather (0 if insufficient data)"
+
+      - name: weather_resistance_tier
+        description: "Weather resistance classification"
+        tests:
+          - accepted_values:
+              values: ['Weather_Resistant', 'Moderate_Impact', 'Weather_Vulnerable', 'Insufficient_Data']
+
+      # League Averages (for teams with insufficient data)
+      - name: league_avg_weather_impact
+        description: "League-wide average weather impact on EPA"
+
+      - name: league_avg_pass_weather_impact
+        description: "League-wide average weather impact on pass EPA"
+
+      - name: league_avg_run_weather_impact
+        description: "League-wide average weather impact on run EPA"
+
+      # Final Outputs
+      - name: final_weather_adjustment
+        description: "Final weather adjustment: uses team-specific if available, else league average"
+
+      - name: weather_neutral_epa
+        description: "Weather-normalized EPA projection"
+
+      - name: weather_adjustment_confidence
+        description: "Confidence level in weather adjustment"
+        tests:
+          - accepted_values:
+              values: ['High', 'Medium', 'Low']
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - team
+            - season
+
+  - name: mart_model_validation
+    description: >
+      Model validation and backtesting framework for evaluating prediction accuracy.
+      Tracks prediction errors (MAE), directional accuracy, feature importance,
+      and hypothetical betting ROI. Used to assess model performance over time
+      and identify areas for improvement.
+    meta:
+      grain: "varies by analysis - can be by season, week, or confidence level"
+      owner: "data-engineering"
+      primary_use: "Model performance monitoring and backtesting"
+    config:
+      materialized: table
+      tags: ['marts', 'validation', 'analytics']
+    columns:
+      - name: season
+        description: "NFL season year"
+        tests:
+          - not_null
+
+      - name: week
+        description: "Week number (may be null for season-level aggregations)"
+
+      - name: model_type
+        description: "Type of prediction (spread, total, player_stat, etc.)"
+        tests:
+          - accepted_values:
+              values: ['spread', 'total', 'player_rushing', 'player_receiving', 'player_passing']
+              config:
+                severity: warn
+
+      - name: predictions_count
+        description: "Number of predictions made in this period"
+
+      - name: mae
+        description: "Mean Absolute Error - average prediction error magnitude"
+
+      - name: rmse
+        description: "Root Mean Squared Error - penalizes large errors more"
+
+      - name: directional_accuracy
+        description: "Percentage of predictions with correct direction (0.0 to 1.0)"
+
+      - name: bias
+        description: "Average prediction bias (positive = overestimating, negative = underestimating)"
+
+      - name: confidence_level
+        description: "Prediction confidence tier"
+        tests:
+          - accepted_values:
+              values: ['High', 'Medium', 'Low']
+              config:
+                severity: warn
+
+      - name: high_confidence_accuracy
+        description: "Directional accuracy for high-confidence predictions"
+
+      - name: calibration_score
+        description: "How well confidence levels match actual accuracy (1.0 = perfect)"
+
+      - name: betting_roi
+        description: "Hypothetical ROI assuming -110 odds and 3-point margin (can be negative)"
+
+      - name: winning_bet_pct
+        description: "Percentage of hypothetical bets that would have won (0.0 to 1.0)"
+
+      - name: feature_importance_top_1
+        description: "Most important feature for this model/period"
+
+      - name: feature_importance_top_2
+        description: "Second most important feature"
+
+      - name: feature_importance_top_3
+        description: "Third most important feature"
+
+      - name: weather_games_mae
+        description: "MAE specifically for games played in adverse weather"
+
+      - name: division_games_mae
+        description: "MAE specifically for division games"
+
+      - name: trend
+        description: "Performance trend (improving, stable, declining)"
+        tests:
+          - accepted_values:
+              values: ['improving', 'stable', 'declining']
+              config:
+                severity: warn
