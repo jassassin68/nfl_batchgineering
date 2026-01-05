@@ -41,7 +41,7 @@ WITH base_plays AS (
         -- Play details
         play_type,
         CAST(yards_gained AS INT) AS yards_gained,
-        "desc" AS play_description,
+        'desc' AS play_description,
 
         -- Play outcomes (boolean flags)
         CAST(CASE WHEN first_down_rush = '1' OR first_down_pass = '1' THEN 1 ELSE 0 END AS INT) AS first_down,

@@ -2,7 +2,8 @@
 -- Backtesting framework for validating spread and totals predictions
 
 {{ config(
-    materialized='table'
+    materialized='table',
+    enabled=false
 ) }}
 
 WITH game_results AS (

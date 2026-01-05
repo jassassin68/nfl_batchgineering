@@ -19,7 +19,7 @@ WITH team_weekly_defensive_plays AS (
         -- Play counts faced
         COUNT(*) AS total_plays_faced,
         SUM(pass_attempt) AS pass_attempts_faced,
-        SUM(rush_attempts) AS rush_attempts_faced,
+        SUM(rush_attempt) AS rush_attempts_faced,
 
         -- EPA allowed (lower is better for defense)
         AVG(epa) AS avg_epa_allowed,

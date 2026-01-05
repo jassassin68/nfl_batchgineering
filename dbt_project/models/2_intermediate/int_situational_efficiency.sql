@@ -19,13 +19,13 @@ WITH situational_plays AS (
             WHEN yardline_100 <= 10 THEN 'goal_line'  
             WHEN yardline_100 >= 80 THEN 'own_redzone'
             ELSE 'field'
-        END AS field_zone,
+        END AS part_of_field_zone,
         
         CASE 
             WHEN down = 3 THEN 'third_down'
             WHEN down = 4 THEN 'fourth_down'
             WHEN down <= 2 THEN 'early_down'
-        END AS down_situation,
+        END AS internal_down_situation,
         
         CASE 
             WHEN ydstogo = 1 THEN 'short_yardage'
@@ -47,7 +47,7 @@ WITH situational_plays AS (
             ELSE 'normal_time'
         END AS time_situation
         
-    FROM {{ ref('stgnv_play_by_play') }}
+    FROM {{ ref('int_plays_cleaned') }}
     WHERE epa IS NOT NULL
 ),
 
@@ -61,23 +61,12 @@ red_zone_metrics AS (
         
         COUNT(*) AS plays,
         AVG(epa) AS epa_per_play,
-        AVG(success::float) AS success_rate,
-        SUM(touchdown) AS touchdowns,
-        COUNT(DISTINCT drive) AS drives,
+        AVG(is_successful_play::float) AS success_rate,
         SUM(touchdown)::float / NULLIF(COUNT(DISTINCT drive), 0) AS td_rate,
-        
-        -- Goal line specific (inside 5)
-        AVG(CASE WHEN yardline_100 <= 5 THEN epa END) AS goal_line_epa,
-        AVG(CASE WHEN yardline_100 <= 5 THEN success::float END) AS goal_line_success,
-        
-        -- Red zone by play type
-        AVG(CASE WHEN play_type = 'pass' THEN epa END) AS rz_pass_epa,
-        AVG(CASE WHEN play_type = 'run' THEN epa END) AS rz_run_epa,
-        COUNT(CASE WHEN play_type = 'pass' THEN 1 END)::float / 
-            NULLIF(COUNT(*), 0) AS rz_pass_rate
+        SUM(touchdown)::float / NULLIF(COUNT(DISTINCT drive), 0) AS conversion_rate
         
     FROM situational_plays 
-    WHERE field_zone = 'red_zone'
+    WHERE part_of_field_zone = 'red_zone'
     GROUP BY posteam, season, week
 ),
 
@@ -91,22 +80,12 @@ third_down_metrics AS (
         
         COUNT(*) AS plays,
         AVG(epa) AS epa_per_play,
-        AVG(success::float) AS success_rate,
-        AVG(first_down::float) AS conversion_rate,
-        
-        -- Third down by distance
-        AVG(CASE WHEN ydstogo = 1 THEN first_down::float END) AS third_and_1_rate,
-        AVG(CASE WHEN ydstogo BETWEEN 2 AND 3 THEN first_down::float END) AS third_and_short_rate,
-        AVG(CASE WHEN ydstogo BETWEEN 4 AND 6 THEN first_down::float END) AS third_and_medium_rate,
-        AVG(CASE WHEN ydstogo >= 7 THEN first_down::float END) AS third_and_long_rate,
-        
-        -- Third down EPA by distance
-        AVG(CASE WHEN ydstogo <= 3 THEN epa END) AS third_short_epa,
-        AVG(CASE WHEN ydstogo BETWEEN 4 AND 6 THEN epa END) AS third_medium_epa,
-        AVG(CASE WHEN ydstogo >= 7 THEN epa END) AS third_long_epa
+        AVG(is_successful_play::float) AS success_rate,
+        SUM(touchdown)::float / NULLIF(COUNT(DISTINCT drive), 0) AS td_rate,
+        AVG(first_down::float) AS conversion_rate
         
     FROM situational_plays
-    WHERE down_situation = 'third_down'
+    WHERE internal_down_situation = 'third_down'
     GROUP BY posteam, season, week
 ),
 
@@ -120,16 +99,9 @@ two_minute_metrics AS (
         
         COUNT(*) AS plays,
         AVG(epa) AS epa_per_play,
-        AVG(success::float) AS success_rate,
-        AVG(explosive_play::float) AS explosive_rate,
-        
-        -- Two minute by half
-        AVG(CASE WHEN qtr = 2 THEN epa END) AS first_half_2min_epa,
-        AVG(CASE WHEN qtr = 4 THEN epa END) AS second_half_2min_epa,
-        
-        -- Pressure situations (trailing in 2-minute drill)
-        AVG(CASE WHEN score_differential < 0 THEN epa END) AS trailing_2min_epa,
-        AVG(CASE WHEN score_differential > 0 THEN epa END) AS leading_2min_epa
+        AVG(is_successful_play::float) AS success_rate,
+        SUM(touchdown)::float / NULLIF(COUNT(DISTINCT drive), 0) AS td_rate,
+        AVG(first_down::float) AS conversion_rate
         
     FROM situational_plays
     WHERE time_situation = 'two_minute'
@@ -146,59 +118,106 @@ short_yardage_metrics AS (
         
         COUNT(*) AS plays,
         AVG(epa) AS epa_per_play,
-        AVG(success::float) AS success_rate,
-        AVG(first_down::float) AS conversion_rate,
-        
-        -- Short yardage by play type
-        AVG(CASE WHEN play_type = 'run' THEN success::float END) AS short_yardage_run_rate,
-        AVG(CASE WHEN play_type = 'pass' THEN success::float END) AS short_yardage_pass_rate,
-        
-        COUNT(CASE WHEN play_type = 'run' THEN 1 END)::float / 
-            NULLIF(COUNT(*), 0) AS short_yardage_run_frequency
+        AVG(is_successful_play::float) AS success_rate,
+        SUM(touchdown)::float / NULLIF(COUNT(DISTINCT drive), 0) AS td_rate,
+        AVG(first_down::float) AS conversion_rate
         
     FROM situational_plays
     WHERE ydstogo = 1 
     GROUP BY posteam, season, week
 ),
 
--- Combine all situational metrics
-combined_situational AS (
-    SELECT * FROM red_zone_metrics
-    UNION ALL
-    SELECT * FROM third_down_metrics  
-    UNION ALL
-    SELECT * FROM two_minute_metrics
-    UNION ALL
-    SELECT * FROM short_yardage_metrics
+-- Pivot situational metrics to wide format
+team_situational_summary AS (
+    SELECT 
+        team,
+        season,
+        week,
+        
+        -- Red Zone Metrics
+        MAX(CASE WHEN situation_type = 'red_zone' THEN plays END) AS red_zone_plays,
+        MAX(CASE WHEN situation_type = 'red_zone' THEN td_rate END) AS red_zone_td_rate,
+        MAX(CASE WHEN situation_type = 'red_zone' THEN epa_per_play END) AS red_zone_epa,
+        MAX(CASE WHEN situation_type = 'red_zone' THEN success_rate END) AS red_zone_success_rate,
+        
+        -- Third Down Metrics  
+        MAX(CASE WHEN situation_type = 'third_down' THEN plays END) AS third_down_attempts,
+        MAX(CASE WHEN situation_type = 'third_down' THEN conversion_rate END) AS third_down_conversion_rate,
+        MAX(CASE WHEN situation_type = 'third_down' THEN plays * conversion_rate END) AS third_down_conversions,
+        MAX(CASE WHEN situation_type = 'third_down' THEN epa_per_play END) AS third_down_epa,
+        
+        -- Two Minute Drill Metrics
+        MAX(CASE WHEN situation_type = 'two_minute' THEN plays END) AS two_minute_drill_plays,
+        MAX(CASE WHEN situation_type = 'two_minute' THEN epa_per_play END) AS two_minute_drill_epa,
+        MAX(CASE WHEN situation_type = 'two_minute' THEN success_rate END) AS two_minute_success_rate,
+        
+        -- Short Yardage Metrics
+        MAX(CASE WHEN situation_type = 'short_yardage' THEN plays END) AS short_yardage_plays,
+        MAX(CASE WHEN situation_type = 'short_yardage' THEN success_rate END) AS short_yardage_success_rate,
+        MAX(CASE WHEN situation_type = 'short_yardage' THEN conversion_rate END) AS short_yardage_conversion_rate
+        
+    FROM (
+        SELECT * FROM red_zone_metrics
+        UNION ALL
+        SELECT * FROM third_down_metrics  
+        UNION ALL
+        SELECT * FROM two_minute_metrics
+        UNION ALL
+        SELECT * FROM short_yardage_metrics
+    ) combined
+    GROUP BY team, season, week
 )
 
 SELECT 
-    *,
+    team,
+    season,
+    week,
     
-    -- Rolling averages for situational metrics
-    AVG(epa_per_play) OVER (
-        PARTITION BY team, season, situation_type 
+    -- Red Zone Metrics
+    COALESCE(red_zone_plays, 0) AS red_zone_plays,
+    COALESCE(red_zone_td_rate, 0) AS red_zone_td_rate,
+    COALESCE(red_zone_epa, 0) AS red_zone_epa,
+    COALESCE(red_zone_success_rate, 0) AS red_zone_success_rate,
+    
+    -- Third Down Metrics
+    COALESCE(third_down_attempts, 0) AS third_down_attempts,
+    COALESCE(third_down_conversions, 0) AS third_down_conversions,
+    COALESCE(third_down_conversion_rate, 0) AS third_down_conversion_rate,
+    COALESCE(third_down_epa, 0) AS third_down_epa,
+    
+    -- Two Minute Drill Metrics
+    COALESCE(two_minute_drill_plays, 0) AS two_minute_drill_plays,
+    COALESCE(two_minute_drill_epa, 0) AS two_minute_drill_epa,
+    COALESCE(two_minute_success_rate, 0) AS two_minute_success_rate,
+    
+    -- Short Yardage Metrics
+    COALESCE(short_yardage_plays, 0) AS short_yardage_plays,
+    COALESCE(short_yardage_success_rate, 0) AS short_yardage_success_rate,
+    COALESCE(short_yardage_conversion_rate, 0) AS short_yardage_conversion_rate,
+    
+    -- Rolling 4-week averages
+    AVG(red_zone_td_rate) OVER (
+        PARTITION BY team, season 
         ORDER BY week 
         ROWS BETWEEN 3 PRECEDING AND CURRENT ROW
-    ) AS epa_l4w,
+    ) AS rolling_4wk_red_zone_td_rate,
     
-    AVG(success_rate) OVER (
-        PARTITION BY team, season, situation_type
+    AVG(third_down_conversion_rate) OVER (
+        PARTITION BY team, season
         ORDER BY week
         ROWS BETWEEN 3 PRECEDING AND CURRENT ROW  
-    ) AS success_rate_l4w,
+    ) AS rolling_4wk_third_down_rate,
     
-    -- Situational rankings
-    RANK() OVER (
-        PARTITION BY season, week, situation_type
-        ORDER BY epa_per_play DESC
-    ) AS situation_epa_rank,
+    AVG(two_minute_drill_epa) OVER (
+        PARTITION BY team, season
+        ORDER BY week
+        ROWS BETWEEN 3 PRECEDING AND CURRENT ROW  
+    ) AS rolling_4wk_two_min_epa,
     
-    -- Sample size indicator
-    CASE 
-        WHEN plays >= 10 THEN 'sufficient'
-        WHEN plays >= 5 THEN 'moderate'  
-        ELSE 'low'
-    END AS sample_size_quality
+    AVG(short_yardage_success_rate) OVER (
+        PARTITION BY team, season
+        ORDER BY week
+        ROWS BETWEEN 3 PRECEDING AND CURRENT ROW  
+    ) AS rolling_4wk_short_yardage_rate
     
-FROM combined_situational
+FROM team_situational_summary
