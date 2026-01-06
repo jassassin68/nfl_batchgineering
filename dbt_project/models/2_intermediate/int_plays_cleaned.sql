@@ -44,36 +44,36 @@ WITH base_plays AS (
         'desc' AS play_description,
 
         -- Play outcomes (boolean flags)
-        CAST(CASE WHEN first_down_rush = '1' OR first_down_pass = '1' THEN 1 ELSE 0 END AS INT) AS first_down,
-        CAST(CASE WHEN touchdown = '1' THEN 1 ELSE 0 END AS INT) AS touchdown,
-        CAST(CASE WHEN pass_touchdown = '1' THEN 1 ELSE 0 END AS INT) AS pass_touchdown,
-        CAST(CASE WHEN rush_touchdown = '1' THEN 1 ELSE 0 END AS INT) AS rush_touchdown,
-        CAST(CASE WHEN interception = '1' THEN 1 ELSE 0 END AS INT) AS interception,
-        CAST(CASE WHEN fumble_lost = '1' THEN 1 ELSE 0 END AS INT) AS fumble_lost,
-        CAST(CASE WHEN fumble = '1' THEN 1 ELSE 0 END AS INT) AS fumble,
-        CAST(CASE WHEN safety = '1' THEN 1 ELSE 0 END AS INT) AS safety,
-        CAST(CASE WHEN sack = '1' THEN 1 ELSE 0 END AS INT) AS sack,
-        CAST(CASE WHEN penalty = '1' THEN 1 ELSE 0 END AS INT) AS penalty,
-        CAST(CASE WHEN complete_pass = '1' THEN 1 ELSE 0 END AS INT) AS complete_pass,
-        CAST(CASE WHEN incomplete_pass = '1' THEN 1 ELSE 0 END AS INT) AS incomplete_pass,
+        CAST(CASE WHEN first_down_rush = '1.0' OR first_down_pass = '1.0' THEN 1 ELSE 0 END AS INT) AS first_down,
+        CAST(CASE WHEN touchdown = '1.0' THEN 1 ELSE 0 END AS INT) AS touchdown,
+        CAST(CASE WHEN pass_touchdown = '1.0' THEN 1 ELSE 0 END AS INT) AS pass_touchdown,
+        CAST(CASE WHEN rush_touchdown = '1.0' THEN 1 ELSE 0 END AS INT) AS rush_touchdown,
+        CAST(CASE WHEN interception = '1.0' THEN 1 ELSE 0 END AS INT) AS interception,
+        CAST(CASE WHEN fumble_lost = '1.0' THEN 1 ELSE 0 END AS INT) AS fumble_lost,
+        CAST(CASE WHEN fumble = '1.0' THEN 1 ELSE 0 END AS INT) AS fumble,
+        CAST(CASE WHEN safety = '1.0' THEN 1 ELSE 0 END AS INT) AS safety,
+        CAST(CASE WHEN sack = '1.0' THEN 1 ELSE 0 END AS INT) AS sack,
+        CAST(CASE WHEN penalty = '1.0' THEN 1 ELSE 0 END AS INT) AS penalty,
+        CAST(CASE WHEN complete_pass = '1.0' THEN 1 ELSE 0 END AS INT) AS complete_pass,
+        CAST(CASE WHEN incomplete_pass = '1.0' THEN 1 ELSE 0 END AS INT) AS incomplete_pass,
 
         -- Attempt flags
-        CAST(CASE WHEN pass_attempt = '1' THEN 1 ELSE 0 END AS INT) AS pass_attempt,
-        CAST(CASE WHEN rush_attempt = '1' THEN 1 ELSE 0 END AS INT) AS rush_attempt,
-        CAST(CASE WHEN field_goal_attempt = '1' THEN 1 ELSE 0 END AS INT) AS field_goal_attempt,
-        CAST(CASE WHEN punt_attempt = '1' THEN 1 ELSE 0 END AS INT) AS punt_attempt,
-        CAST(CASE WHEN two_point_attempt = '1' THEN 1 ELSE 0 END AS INT) AS two_point_attempt,
-        CAST(CASE WHEN extra_point_attempt = '1' THEN 1 ELSE 0 END AS INT) AS extra_point_attempt,
+        CAST(CASE WHEN pass_attempt = '1.0' THEN 1 ELSE 0 END AS INT) AS pass_attempt,
+        CAST(CASE WHEN rush_attempt = '1.0' THEN 1 ELSE 0 END AS INT) AS rush_attempt,
+        CAST(CASE WHEN field_goal_attempt = '1.0' THEN 1 ELSE 0 END AS INT) AS field_goal_attempt,
+        CAST(CASE WHEN punt_attempt = '1.0' THEN 1 ELSE 0 END AS INT) AS punt_attempt,
+        CAST(CASE WHEN two_point_attempt = '1.0' THEN 1 ELSE 0 END AS INT) AS two_point_attempt,
+        CAST(CASE WHEN extra_point_attempt = '1.0' THEN 1 ELSE 0 END AS INT) AS extra_point_attempt,
 
         -- QB flags
-        CAST(CASE WHEN qb_kneel = '1' THEN 1 ELSE 0 END AS INT) AS qb_kneel,
-        CAST(CASE WHEN qb_spike = '1' THEN 1 ELSE 0 END AS INT) AS qb_spike,
-        CAST(CASE WHEN qb_scramble = '1' THEN 1 ELSE 0 END AS INT) AS qb_scramble,
-        CAST(CASE WHEN qb_dropback = '1' THEN 1 ELSE 0 END AS INT) AS qb_dropback,
+        CAST(CASE WHEN qb_kneel = '1.0' THEN 1 ELSE 0 END AS INT) AS qb_kneel,
+        CAST(CASE WHEN qb_spike = '1.0' THEN 1 ELSE 0 END AS INT) AS qb_spike,
+        CAST(CASE WHEN qb_scramble = '1.0' THEN 1 ELSE 0 END AS INT) AS qb_scramble,
+        CAST(CASE WHEN qb_dropback = '1.0' THEN 1 ELSE 0 END AS INT) AS qb_dropback,
 
         -- Play style
-        CAST(CASE WHEN shotgun = '1' THEN 1 ELSE 0 END AS INT) AS shotgun,
-        CAST(CASE WHEN no_huddle = '1' THEN 1 ELSE 0 END AS INT) AS no_huddle,
+        CAST(CASE WHEN shotgun = '1.0' THEN 1 ELSE 0 END AS INT) AS shotgun,
+        CAST(CASE WHEN no_huddle = '1.0' THEN 1 ELSE 0 END AS INT) AS no_huddle,
         pass_length,
         pass_location,
         run_location,
@@ -90,10 +90,10 @@ WITH base_plays AS (
         CAST(wp AS FLOAT) AS wp,
 
         -- Down conversion metrics
-        CAST(CASE WHEN third_down_converted = '1' THEN 1 ELSE 0 END AS INT) AS third_down_converted,
-        CAST(CASE WHEN third_down_failed = '1' THEN 1 ELSE 0 END AS INT) AS third_down_failed,
-        CAST(CASE WHEN fourth_down_converted = '1' THEN 1 ELSE 0 END AS INT) AS fourth_down_converted,
-        CAST(CASE WHEN fourth_down_failed = '1' THEN 1 ELSE 0 END AS INT) AS fourth_down_failed,
+        CAST(CASE WHEN third_down_converted = '1.0' THEN 1 ELSE 0 END AS INT) AS third_down_converted,
+        CAST(CASE WHEN third_down_failed = '1.0' THEN 1 ELSE 0 END AS INT) AS third_down_failed,
+        CAST(CASE WHEN fourth_down_converted = '1.0' THEN 1 ELSE 0 END AS INT) AS fourth_down_converted,
+        CAST(CASE WHEN fourth_down_failed = '1.0' THEN 1 ELSE 0 END AS INT) AS fourth_down_failed,
 
         -- Drive information
         CAST(drive AS INT) AS drive,
@@ -103,7 +103,7 @@ WITH base_plays AS (
         CAST(drive_yards_penalized AS INT) AS drive_yards_penalized,
         CAST(drive_start_yard_line AS INT) AS drive_start_yard_line,
         CAST(drive_end_yard_line AS INT) AS drive_end_yard_line,
-        CAST(CASE WHEN drive_ended_with_score = '1' THEN 1 ELSE 0 END AS INT) AS drive_ended_with_score,
+        CAST(CASE WHEN drive_ended_with_score = '1.0' THEN 1 ELSE 0 END AS INT) AS drive_ended_with_score,
 
         -- Weather
         CAST(temp AS FLOAT) AS temp,
@@ -122,8 +122,8 @@ WITH base_plays AS (
     FROM {{ ref('stgnv_play_by_play') }}
     WHERE
         -- Filter out invalid/administrative plays
-        CAST(CASE WHEN qb_kneel = '1' THEN 1 ELSE 0 END AS INT) = 0  -- Exclude kneels
-        AND CAST(CASE WHEN qb_spike = '1' THEN 1 ELSE 0 END AS INT) = 0  -- Exclude spikes
+        CAST(CASE WHEN qb_kneel = '1.0' THEN 1 ELSE 0 END AS INT) = 0  -- Exclude kneels
+        AND CAST(CASE WHEN qb_spike = '1.0' THEN 1 ELSE 0 END AS INT) = 0  -- Exclude spikes
         AND play_type IS NOT NULL
         AND play_type NOT IN ('no_play', 'timeout', 'half_end', 'quarter_end', 'game_end')
         AND season >= 2010  -- Focus on modern era with complete EPA data
