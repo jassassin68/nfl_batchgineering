@@ -22,6 +22,8 @@ import snowflake.connector
 from snowflake.connector.errors import DatabaseError, ProgrammingError
 from loguru import logger
 from dotenv import load_dotenv
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 
 
 # Configure logging
@@ -105,14 +107,14 @@ class TrainingDataLoader:
         if env_path.exists():
             load_dotenv(env_path)
             logger.debug(f"Loaded .env from {env_path}")
-        
-        # Validate required environment variables
-        required_vars = ['SNOWFLAKE_ACCOUNT', 'SNOWFLAKE_USER', 'SNOWFLAKE_PASSWORD']
+
+        # Validate required environment variables for key pair authentication
+        required_vars = ['SNOWFLAKE_ACCOUNT', 'SNOWFLAKE_USER', 'SNOWFLAKE_KEYPAIR_PRIVATE_KEY']
         missing = [var for var in required_vars if not os.getenv(var)]
-        
+
         if missing:
             raise ValueError(f"Missing required environment variables: {missing}")
-        
+
         logger.debug("✅ All required environment variables present")
     
     def _create_http_session(self) -> requests.Session:
@@ -148,11 +150,33 @@ class TrainingDataLoader:
     def _connect(self) -> None:
         """Establish Snowflake connection with error handling"""
         try:
-            logger.debug("Establishing Snowflake connection...")
+            logger.debug("Establishing Snowflake connection using key pair authentication...")
+
+            # Load private key for key pair authentication
+            private_key_text = os.getenv('SNOWFLAKE_KEYPAIR_PRIVATE_KEY')
+            passphrase = os.getenv('SNOWFLAKE_KEYPAIR_PASSPHRASE')
+
+            # Replace literal \n with actual newlines (needed for .env file format)
+            private_key_text = private_key_text.replace('\\n', '\n')
+
+            # Decode the private key
+            private_key = serialization.load_pem_private_key(
+                private_key_text.encode(),
+                password=passphrase.encode() if passphrase else None,
+                backend=default_backend()
+            )
+
+            # Get private key bytes in DER format
+            pkb = private_key.private_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+
             self._conn = snowflake.connector.connect(
                 account=os.getenv("SNOWFLAKE_ACCOUNT"),
                 user=os.getenv("SNOWFLAKE_USER"),
-                password=os.getenv("SNOWFLAKE_PASSWORD"),
+                private_key=pkb,  # Use key pair authentication instead of password
                 database="RAW",
                 schema="NFLVERSE",
                 warehouse=self.warehouse,
@@ -162,13 +186,13 @@ class TrainingDataLoader:
                     'USE_CACHED_RESULT': False
                 }
             )
-            
+
             # Verify connection
             with self._conn.cursor() as cur:
                 cur.execute("SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_DATABASE(), CURRENT_WAREHOUSE()")
                 user, role, database, warehouse = cur.fetchone()
-                logger.info(f"✅ Connected: {user}@{database} (Role: {role}, WH: {warehouse})")
-                
+                logger.info(f"✅ Connected: {user}@{database} (Role: {role}, WH: {warehouse}) using key pair auth")
+
         except DatabaseError as e:
             logger.error(f"❌ Snowflake connection failed: {e}")
             raise
