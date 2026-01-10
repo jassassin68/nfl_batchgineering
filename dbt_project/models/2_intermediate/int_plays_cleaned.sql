@@ -9,6 +9,8 @@
 
 WITH base_plays AS (
     SELECT
+        -- Primary key
+        {{ dbt_utils.generate_surrogate_key(['play_id', 'game_id', 'season']) }} as play_by_play_pk,
         -- Identifiers
         play_id,
         game_id,

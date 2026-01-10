@@ -1,7 +1,7 @@
 with
 
 final as (
-  select 
+  select
     "play_id" as play_id,
     "game_id" as game_id,
     "game_date" as game_date,

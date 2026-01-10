@@ -12,10 +12,15 @@ models:
     config:
       tags: ['intermediate', 'play_level']
     columns:
-      - name: play_id
-        description: "Unique identifier for each play"
+      - name: play_by_play_pk
+        description: "Unique identifier for each play."
         tests:
           - unique
+          - not_null
+
+      - name: play_id
+        description: "Unique identifier for each play in a given game."
+        tests:
           - not_null
 
       - name: game_id

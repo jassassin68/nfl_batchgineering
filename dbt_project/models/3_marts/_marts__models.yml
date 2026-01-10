@@ -122,11 +122,18 @@ models:
       ML-ready feature dataset for game outcome predictions (spreads and totals).
       Combines home and away team features at the game level with weather, division,
       and playoff context. This is the primary dataset for training prediction models.
+      Uses mart_predictive_features as single source of truth for team metrics.
     meta:
       grain: "one row per game"
       owner: "data-engineering"
       primary_key: "game_id"
       primary_use: "Training data for spread and totals prediction models"
+      feature_categories:
+        - offensive_metrics: "EPA, success rate, explosive play rate by team"
+        - defensive_metrics: "EPA allowed, defensive rank, pass/run defense"
+        - situational_metrics: "Red zone efficiency, third down, two-minute drill"
+        - game_context: "Weather, division rivalries, playoff games"
+        - derived_features: "Matchup advantages, differentials, predictions"
     config:
       materialized: table
       tags: ['marts', 'predictions', 'game_level']

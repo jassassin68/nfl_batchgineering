@@ -1,5 +1,13 @@
--- models/marts/mart_game_prediction_features.sql
--- Game-level features combining both teams for spread and totals prediction
+-- ============================================================================
+-- MART: Game Prediction Features
+-- ============================================================================
+-- Purpose: ML-ready feature dataset for predicting NFL game spreads and totals
+-- Grain: One row per game
+-- Dependencies:
+--   - int_plays_cleaned (game schedule, weather)
+--   - mart_predictive_features (team offensive + defensive metrics)
+--   - int_situational_efficiency (red zone, third down, two-minute drill)
+-- ============================================================================
 
 {{ config(
     materialized='table',
@@ -9,6 +17,10 @@
         {'columns': ['home_team', 'away_team']}
     ]
 ) }}
+
+-- ============================================================================
+-- STEP 1: Game Context (Schedule + Weather)
+-- ============================================================================
 
 WITH game_schedule AS (
     -- Derive game schedule from play-by-play data since schedule source doesn't exist
@@ -91,75 +103,77 @@ game_context AS (
     LEFT JOIN game_weather gw ON gs.game_id = gw.game_id
 ),
 
--- Get team offensive features (when they play at home)
-home_team_offense AS (
-    SELECT 
-        pf.season,
-        pf.week,
-        pf.team,
-        
-        -- Core offensive metrics
-        pf.epa_per_play_adj AS off_epa_adj,
-        pf.epa_per_play_l4w AS off_epa_l4w,
-        pf.success_rate AS off_success_rate,
-        pf.success_rate_l4w AS off_success_l4w,
-        pf.explosive_play_rate AS off_explosive_rate,
-        pf.pass_epa_adj AS off_pass_epa,
-        pf.run_epa_adj AS off_run_epa,
-        pf.redzone_epa_adj AS off_rz_epa,
-        pf.pass_rate AS off_pass_rate,
-        pf.weather_adjusted_epa_projection AS off_weather_epa,
-        pf.offensive_matchup_score AS off_matchup_score,
-        pf.composite_efficiency_score AS off_efficiency_score,
-        pf.epa_trend AS off_epa_trend,
-        pf.epa_rolling_volatility AS off_volatility,
-        pf.efficiency_tier AS off_tier,
-        pf.weather_resistance_tier AS off_weather_resistance
-        
-    FROM {{ ref('mart_predictive_features') }} pf
-),
+-- ============================================================================
+-- STEP 2: Team Features (Offensive + Defensive Metrics)
+-- ============================================================================
 
--- Get team defensive features
-team_defense AS (
-    SELECT 
-        team,
+-- Unified team features from mart_predictive_features
+-- This CTE provides both offensive and defensive features in one place,
+-- eliminating the need for separate offense/defense CTEs
+team_features AS (
+    SELECT
         season,
         week,
-        season_def_epa_allowed AS def_epa_allowed,
-        def_epa_rank AS def_rank,
-        def_strength_tier AS def_tier,
-        season_def_pass_epa AS def_pass_epa,
-        season_def_run_epa AS def_run_epa,
-        def_epa_allowed_l4w AS def_epa_l4w,
-        season_def_success_rate_allowed AS def_success_allowed
-    FROM {{ ref('int_team_defensive_strength') }}
+        team,
+
+        -- Offensive features
+        epa_per_play_adj,
+        epa_per_play_l4w,
+        success_rate,
+        success_rate_l4w,
+        explosive_play_rate,
+        pass_epa_adj,
+        run_epa_adj,
+        redzone_epa_adj,
+        pass_rate,
+        weather_adjusted_epa_projection,
+        offensive_matchup_score,
+        composite_efficiency_score,
+        epa_trend,
+        epa_rolling_volatility,
+        efficiency_tier,
+        weather_resistance_tier,
+
+        -- Defensive features
+        season_def_epa_allowed,
+        def_epa_rank,
+        def_strength_tier,
+        season_def_pass_epa,
+        season_def_run_epa,
+        def_epa_allowed_l4w,
+        season_def_success_rate_allowed
+
+    FROM {{ ref('mart_predictive_features') }}
 ),
 
--- Get situational features
+-- Situational efficiency metrics (red zone, third down, two-minute drill)
 team_situational AS (
-    SELECT 
+    SELECT
         season,
         week,
         team,
         
         -- Red zone efficiency
-        MAX(CASE WHEN situation_type = 'red_zone' THEN epa_per_play END) AS rz_epa,
-        MAX(CASE WHEN situation_type = 'red_zone' THEN success_rate END) AS rz_success,
-        MAX(CASE WHEN situation_type = 'red_zone' THEN td_rate END) AS rz_td_rate,
+        red_zone_epa AS rz_epa,
+        red_zone_success_rate AS rz_success,
+        red_zone_td_rate AS rz_td_rate,
         
         -- Third down efficiency
-        MAX(CASE WHEN situation_type = 'third_down' THEN conversion_rate END) AS third_conv_rate,
-        MAX(CASE WHEN situation_type = 'third_down' THEN epa_per_play END) AS third_epa,
+        third_down_conversion_rate AS third_conv_rate,
+        third_down_epa AS third_epa,
         
         -- Two minute efficiency
-        MAX(CASE WHEN situation_type = 'two_minute' THEN epa_per_play END) AS two_min_epa,
-        MAX(CASE WHEN situation_type = 'two_minute' THEN success_rate END) AS two_min_success
+        two_minute_drill_epa AS two_min_epa,
+        two_minute_success_rate AS two_min_success
         
     FROM {{ ref('int_situational_efficiency') }}
-    GROUP BY season, week, team
 ),
 
--- Combine all home team features
+-- ============================================================================
+-- STEP 3: Assemble Game-Level Features
+-- ============================================================================
+
+-- Join home team's offensive, defensive, and situational features to game context
 home_team_combined AS (
     SELECT 
         gc.game_id,
@@ -177,32 +191,33 @@ home_team_combined AS (
         gc.surface,
         gc.div_game,
         gc.playoff,
-        
+
         -- Home team offensive features
-        ho.off_epa_adj AS home_epa_adj,
-        ho.off_epa_l4w AS home_epa_l4w,
-        ho.off_success_rate AS home_success_rate,
-        ho.off_success_l4w AS home_success_l4w,
-        ho.off_explosive_rate AS home_explosive_rate,
-        ho.off_pass_epa AS home_pass_epa,
-        ho.off_run_epa AS home_run_epa,
-        ho.off_rz_epa AS home_rz_epa,
-        ho.off_pass_rate AS home_pass_rate,
-        ho.off_weather_epa AS home_weather_epa,
-        ho.off_matchup_score AS home_matchup_score,
-        ho.off_efficiency_score AS home_efficiency_score,
-        ho.off_epa_trend AS home_epa_trend,
-        ho.off_volatility AS home_volatility,
-        ho.off_tier AS home_tier,
-        ho.off_weather_resistance AS home_weather_resistance,
-        
+        htf.epa_per_play_adj AS home_epa_adj,
+        htf.epa_per_play_l4w AS home_epa_l4w,
+        htf.success_rate AS home_success_rate,
+        htf.success_rate_l4w AS home_success_l4w,
+        htf.explosive_play_rate AS home_explosive_rate,
+        htf.pass_epa_adj AS home_pass_epa,
+        htf.run_epa_adj AS home_run_epa,
+        htf.redzone_epa_adj AS home_rz_epa,
+        htf.pass_rate AS home_pass_rate,
+        htf.weather_adjusted_epa_projection AS home_weather_epa,
+        htf.offensive_matchup_score AS home_matchup_score,
+        htf.composite_efficiency_score AS home_efficiency_score,
+        htf.epa_trend AS home_epa_trend,
+        htf.epa_rolling_volatility AS home_volatility,
+        htf.efficiency_tier AS home_tier,
+        htf.weather_resistance_tier AS home_weather_resistance,
+
         -- Home team defensive features
-        hd.def_epa_allowed AS home_def_epa,
-        hd.def_rank AS home_def_rank,
-        hd.def_tier AS home_def_tier,
-        hd.def_pass_epa AS home_def_pass_epa,
-        hd.def_run_epa AS home_def_run_epa,
-        hd.def_epa_l4w AS home_def_epa_l4w,
+        htf.season_def_epa_allowed AS home_def_epa,
+        htf.def_epa_rank AS home_def_rank,
+        htf.def_strength_tier AS home_def_tier,
+        htf.season_def_pass_epa AS home_def_pass_epa,
+        htf.season_def_run_epa AS home_def_run_epa,
+        htf.def_epa_allowed_l4w AS home_def_epa_l4w,
+        htf.season_def_success_rate_allowed AS home_def_success_allowed,
         
         -- Home team situational
         hs.rz_epa AS home_situation_rz_epa,
@@ -211,53 +226,50 @@ home_team_combined AS (
         hs.third_conv_rate AS home_third_conv,
         hs.third_epa AS home_third_epa,
         hs.two_min_epa AS home_two_min_epa
-        
+
     FROM game_context gc
-    LEFT JOIN home_team_offense ho
-        ON gc.home_team = ho.team
-        AND gc.season = ho.season
-        AND gc.week = ho.week
-    LEFT JOIN team_defense hd
-        ON gc.home_team = hd.team
-        AND gc.season = hd.season
-        AND gc.week = hd.week
+    LEFT JOIN team_features htf
+        ON gc.home_team = htf.team
+        AND gc.season = htf.season
+        AND gc.week = htf.week
     LEFT JOIN team_situational hs
         ON gc.home_team = hs.team
         AND gc.season = hs.season
         AND gc.week = hs.week
 ),
 
--- Add away team features
+-- Add away team's offensive, defensive, and situational features
 combined_features AS (
-    SELECT 
+    SELECT
         htc.*,
-        
+
         -- Away team offensive features
-        ao.off_epa_adj AS away_epa_adj,
-        ao.off_epa_l4w AS away_epa_l4w,
-        ao.off_success_rate AS away_success_rate,
-        ao.off_success_l4w AS away_success_l4w,
-        ao.off_explosive_rate AS away_explosive_rate,
-        ao.off_pass_epa AS away_pass_epa,
-        ao.off_run_epa AS away_run_epa,
-        ao.off_rz_epa AS away_rz_epa,
-        ao.off_pass_rate AS away_pass_rate,
-        ao.off_weather_epa AS away_weather_epa,
-        ao.off_matchup_score AS away_matchup_score,
-        ao.off_efficiency_score AS away_efficiency_score,
-        ao.off_epa_trend AS away_epa_trend,
-        ao.off_volatility AS away_volatility,
-        ao.off_tier AS away_tier,
-        ao.off_weather_resistance AS away_weather_resistance,
-        
+        atf.epa_per_play_adj AS away_epa_adj,
+        atf.epa_per_play_l4w AS away_epa_l4w,
+        atf.success_rate AS away_success_rate,
+        atf.success_rate_l4w AS away_success_l4w,
+        atf.explosive_play_rate AS away_explosive_rate,
+        atf.pass_epa_adj AS away_pass_epa,
+        atf.run_epa_adj AS away_run_epa,
+        atf.redzone_epa_adj AS away_rz_epa,
+        atf.pass_rate AS away_pass_rate,
+        atf.weather_adjusted_epa_projection AS away_weather_epa,
+        atf.offensive_matchup_score AS away_matchup_score,
+        atf.composite_efficiency_score AS away_efficiency_score,
+        atf.epa_trend AS away_epa_trend,
+        atf.epa_rolling_volatility AS away_volatility,
+        atf.efficiency_tier AS away_tier,
+        atf.weather_resistance_tier AS away_weather_resistance,
+
         -- Away team defensive features
-        ad.def_epa_allowed AS away_def_epa,
-        ad.def_rank AS away_def_rank,
-        ad.def_tier AS away_def_tier,
-        ad.def_pass_epa AS away_def_pass_epa,
-        ad.def_run_epa AS away_def_run_epa,
-        ad.def_epa_l4w AS away_def_epa_l4w,
-        
+        atf.season_def_epa_allowed AS away_def_epa,
+        atf.def_epa_rank AS away_def_rank,
+        atf.def_strength_tier AS away_def_tier,
+        atf.season_def_pass_epa AS away_def_pass_epa,
+        atf.season_def_run_epa AS away_def_run_epa,
+        atf.def_epa_allowed_l4w AS away_def_epa_l4w,
+        atf.season_def_success_rate_allowed AS away_def_success_allowed,
+
         -- Away team situational
         aws.rz_epa AS away_situation_rz_epa,
         aws.rz_success AS away_situation_rz_success,
@@ -265,23 +277,26 @@ combined_features AS (
         aws.third_conv_rate AS away_third_conv,
         aws.third_epa AS away_third_epa,
         aws.two_min_epa AS away_two_min_epa
-        
+
     FROM home_team_combined htc
-    LEFT JOIN home_team_offense ao
-        ON htc.away_team = ao.team
-        AND htc.season = ao.season
-        AND htc.week = ao.week
-    LEFT JOIN team_defense ad
-        ON htc.away_team = ad.team
-        AND htc.season = ad.season
-        AND htc.week = ad.week
+    LEFT JOIN team_features atf
+        ON htc.away_team = atf.team
+        AND htc.season = atf.season
+        AND htc.week = atf.week
     LEFT JOIN team_situational aws
         ON htc.away_team = aws.team
         AND htc.season = aws.season
         AND htc.week = aws.week
 )
 
-SELECT 
+-- ============================================================================
+-- STEP 4: Final Feature Engineering
+-- ============================================================================
+
+SELECT
+    -- ========================================================================
+    -- IDENTIFIERS & GAME CONTEXT
+    -- ========================================================================
     game_id,
     season,
     week,
@@ -297,8 +312,10 @@ SELECT
     surface,
     div_game,
     playoff,
-    
-    -- Home team features
+
+    -- ========================================================================
+    -- HOME TEAM FEATURES (Offensive, Defensive, Situational)
+    -- ========================================================================
     home_epa_adj,
     home_epa_l4w,
     home_success_rate,
@@ -318,11 +335,17 @@ SELECT
     home_def_epa,
     home_def_rank,
     home_def_tier,
+    home_def_pass_epa,
+    home_def_run_epa,
+    home_def_epa_l4w,
+    home_def_success_allowed,
     home_rz_td_rate,
     home_third_conv,
     home_two_min_epa,
-    
-    -- Away team features
+
+    -- ========================================================================
+    -- AWAY TEAM FEATURES (Offensive, Defensive, Situational)
+    -- ========================================================================
     away_epa_adj,
     away_epa_l4w,
     away_success_rate,
@@ -342,10 +365,14 @@ SELECT
     away_def_epa,
     away_def_rank,
     away_def_tier,
+    away_def_pass_epa,
+    away_def_run_epa,
+    away_def_epa_l4w,
+    away_def_success_allowed,
     away_rz_td_rate,
     away_third_conv,
     away_two_min_epa,
-    
+
     -- ============================================================
     -- SPREAD PREDICTION FEATURES
     -- ============================================================

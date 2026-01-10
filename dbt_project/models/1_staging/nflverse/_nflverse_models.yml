@@ -202,11 +202,10 @@ models:
       data_grain: "one row per play"
     columns:
       - name: play_id
-        description: "Unique identifier for each play - primary key"
+        description: "Unique identifier for each play in a given game. (not a primary key)"
         data_type: varchar
         tests:
           - not_null
-          - unique
       - name: game_id
         description: "Unique identifier for each game"
         data_type: varchar
