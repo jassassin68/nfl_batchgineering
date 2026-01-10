@@ -56,7 +56,18 @@ game_weather AS (
     WHERE temp IS NOT NULL OR roof IN ('dome', 'closed')
 ),
 
--- Get division game flag
+-- Get Vegas lines for each game
+vegas_lines AS (
+    SELECT
+        game_id,
+        vegas_spread,
+        vegas_total,
+        vegas_home_win_prob,
+        spread_category
+    FROM {{ ref('int_game_vegas_lines') }}
+),
+
+-- Combine game context with weather and Vegas lines
 game_context AS (
     SELECT 
         gs.game_id,
@@ -97,10 +108,17 @@ game_context AS (
         END AS div_game,
         
         -- Playoff game
-        CASE WHEN gs.week >= 18 THEN 1 ELSE 0 END AS playoff
-        
+        CASE WHEN gs.week >= 18 THEN 1 ELSE 0 END AS playoff,
+
+        -- Vegas lines and betting context
+        vl.vegas_spread,
+        vl.vegas_total,
+        vl.vegas_home_win_prob,
+        vl.spread_category
+
     FROM game_schedule gs
     LEFT JOIN game_weather gw ON gs.game_id = gw.game_id
+    LEFT JOIN vegas_lines vl ON gs.game_id = vl.game_id
 ),
 
 -- ============================================================================
@@ -191,6 +209,12 @@ home_team_combined AS (
         gc.surface,
         gc.div_game,
         gc.playoff,
+
+        -- Vegas lines and betting context
+        gc.vegas_spread,
+        gc.vegas_total,
+        gc.vegas_home_win_prob,
+        gc.spread_category,
 
         -- Home team offensive features
         htf.epa_per_play_adj AS home_epa_adj,
@@ -312,6 +336,12 @@ SELECT
     surface,
     div_game,
     playoff,
+
+    -- Vegas lines and betting context
+    vegas_spread,
+    vegas_total,
+    vegas_home_win_prob,
+    spread_category,
 
     -- ========================================================================
     -- HOME TEAM FEATURES (Offensive, Defensive, Situational)
