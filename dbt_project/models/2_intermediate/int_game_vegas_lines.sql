@@ -17,8 +17,8 @@ WITH first_play_per_game AS (
         week,
         home_team,
         away_team,
-        spread_line,  -- Positive means home team favored
-        total_line,   -- Over/under total points
+        spread_line::number as spread_line,  -- Positive means home team favored
+        total_line::number as total_line,   -- Over/under total points
         ROW_NUMBER() OVER (
             PARTITION BY game_id
             ORDER BY play_id
