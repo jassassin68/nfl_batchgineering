@@ -159,15 +159,15 @@ nfl-prediction-system/
 
 ---
 
-### Phase 2: Baseline Models ← CURRENT PHASE
-1. Elo rating system with:
-   - K-factor optimization
-   - Home field adjustment
-   - Margin of victory
-2. Simple linear regression baseline
-3. Establish benchmark metrics
+### Phase 2: Baseline Models ✅ COMPLETE
+1. ✅ Elo rating system with:
+   - ✅ K-factor optimization
+   - ✅ Home field adjustment
+   - ✅ Margin of victory
+2. ✅ Simple linear regression baseline
+3. ✅ Establish benchmark metrics
 
-### Phase 3: Core ML Models
+### Phase 3: Core ML Models ← CURRENT PHASE
 1. XGBoost regressor:
    - max_depth=4, learning_rate=0.05
    - L1/L2 regularization
@@ -219,46 +219,12 @@ nfl-prediction-system/
 
 ## GETTING STARTED
 
-**Phase 1 is complete.** Begin Phase 2: Baseline Models.
-
-### Immediate Tasks:
-
-1. **Implement Elo Rating System** (`src/models/elo.py`)
-   ```python
-   class EloModel:
-       def __init__(self, k_factor=20, home_advantage=48, initial_rating=1500):
-           # K-factor: how quickly ratings change
-           # Home advantage: ~48 Elo points ≈ 2.5 actual points
-           # Regress ratings 1/3 toward mean each season
-   ```
-   - Include margin of victory adjustment
-   - Regress to mean between seasons
-   - Track rating history for each team
-
-2. **Build Linear Regression Baseline** (`src/models/linear.py`)
-   - Simple model using EPA features from `fct_game_features`
-   - Predict margin of victory (home - away)
-   - Establish RMSE baseline to beat
-
-3. **Create Model Base Class** (`src/models/base.py`)
-   ```python
-   class BaseModel(ABC):
-       @abstractmethod
-       def fit(self, X, y): ...
-       @abstractmethod
-       def predict(self, X): ...
-       def evaluate(self, X, y): ...  # Standard metrics
-   ```
-
-4. **Establish Benchmark Metrics**
-   - Run walk-forward CV on 2019-2024 seasons
-   - Report: RMSE, MAE, ATS accuracy vs Vegas
-   - Document baseline performance to beat
+**Phase 1 and Phase 2 are complete.** Begin Phase 3: Core ML Models.
 
 ### Data Available:
 - Feature store: `mart_game_prediction_features` in Snowflake
 - Features include: rolling EPA (4-game), success rates, rest days, travel, Vegas lines
-- Historical data: 2015-2024 seasons
+- Historical data: 2020-2024 seasons
 
 ### Before Proceeding, Confirm:
 - Can you connect to Snowflake and query `mart_game_prediction_features`?
