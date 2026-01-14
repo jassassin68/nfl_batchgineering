@@ -252,14 +252,16 @@ home_team_combined AS (
         hs.two_min_epa AS home_two_min_epa
 
     FROM game_context gc
+    -- Join with PRIOR week's features to prevent look-ahead bias
+    -- For week N games, use week N-1 features (data available before the game)
     LEFT JOIN team_features htf
         ON gc.home_team = htf.team
         AND gc.season = htf.season
-        AND gc.week = htf.week
+        AND gc.week = htf.week + 1  -- For the given x week of features, join to the game happening in week x+1
     LEFT JOIN team_situational hs
         ON gc.home_team = hs.team
         AND gc.season = hs.season
-        AND gc.week = hs.week
+        AND gc.week = hs.week + 1  -- Use prior week's features
 ),
 
 -- Add away team's offensive, defensive, and situational features
@@ -303,14 +305,15 @@ combined_features AS (
         aws.two_min_epa AS away_two_min_epa
 
     FROM home_team_combined htc
+    -- Join with PRIOR week's features to prevent look-ahead bias
     LEFT JOIN team_features atf
         ON htc.away_team = atf.team
         AND htc.season = atf.season
-        AND htc.week = atf.week
+        AND htc.week = atf.week + 1  -- Use prior week's features
     LEFT JOIN team_situational aws
         ON htc.away_team = aws.team
         AND htc.season = aws.season
-        AND htc.week = aws.week
+        AND htc.week = aws.week + 1  -- Use prior week's features
 )
 
 -- ============================================================================
@@ -595,5 +598,6 @@ SELECT
     END AS total_confidence
 
 FROM combined_features
-WHERE home_epa_adj IS NOT NULL 
+WHERE home_epa_adj IS NOT NULL
   AND away_epa_adj IS NOT NULL  -- Ensure both teams have data
+  AND week >= 2  -- Exclude week 1 (no prior week features available)

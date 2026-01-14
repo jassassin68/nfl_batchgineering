@@ -64,7 +64,7 @@ WITH team_weekly_defensive_plays AS (
     FROM {{ ref('int_plays_cleaned') }}
     WHERE
         defteam IS NOT NULL
-        AND season_type = 'REG'  -- Focus on regular season
+    --    AND season_type = 'REG'  -- Focus on regular season
         AND (pass_attempt = 1 OR rush_attempt = 1)  -- Only offensive plays
     GROUP BY 1, 2, 3, 4
 ),
@@ -84,7 +84,7 @@ red_zone_defense AS (
     FROM {{ ref('int_plays_cleaned') }}
     WHERE
         defteam IS NOT NULL
-        AND season_type = 'REG'
+    --    AND season_type = 'REG'
         AND (pass_attempt = 1 OR rush_attempt = 1)
     GROUP BY 1, 2, 3
 ),
@@ -106,7 +106,7 @@ drive_defense_metrics AS (
     FROM {{ ref('int_plays_cleaned') }}
     WHERE
         defteam IS NOT NULL
-        AND season_type = 'REG'
+    --    AND season_type = 'REG'
         AND drive IS NOT NULL
     GROUP BY 1, 2, 3
 ),

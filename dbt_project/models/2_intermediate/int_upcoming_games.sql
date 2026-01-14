@@ -40,7 +40,7 @@ WITH upcoming_schedule AS (
         away_coach
     FROM {{ ref('stgnv_schedules') }}
     WHERE home_score IS NULL  -- Future games have no score
-      AND game_type = 'REG'   -- Regular season only (adjust as needed)
+    --  AND game_type = 'REG'   -- Regular season only (adjust as needed)
 ),
 
 -- Get the latest week of features for each team in the current season

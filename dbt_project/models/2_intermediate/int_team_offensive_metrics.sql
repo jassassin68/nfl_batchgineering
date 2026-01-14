@@ -59,7 +59,7 @@ WITH team_weekly_plays AS (
     FROM {{ ref('int_plays_cleaned') }}
     WHERE
         posteam IS NOT NULL
-        AND season_type = 'REG'  -- Focus on regular season for consistency
+    --    AND season_type = 'REG'  -- Focus on regular season for consistency
         AND (pass_attempt = 1 OR rush_attempt = 1)  -- Only offensive plays
     GROUP BY 1, 2, 3, 4
 ),
@@ -79,7 +79,7 @@ red_zone_efficiency AS (
     FROM {{ ref('int_plays_cleaned') }}
     WHERE
         posteam IS NOT NULL
-        AND season_type = 'REG'
+    --    AND season_type = 'REG'
         AND (pass_attempt = 1 OR rush_attempt = 1)
     GROUP BY 1, 2, 3
 ),
@@ -101,7 +101,7 @@ drive_metrics AS (
     FROM {{ ref('int_plays_cleaned') }}
     WHERE
         posteam IS NOT NULL
-        AND season_type = 'REG'
+    --    AND season_type = 'REG'
         AND drive IS NOT NULL
     GROUP BY 1, 2, 3
 ),
