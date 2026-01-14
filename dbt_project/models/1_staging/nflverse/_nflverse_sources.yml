@@ -217,3 +217,54 @@ sources:
             description: "Total points scored"
           - name: points_allowed
             description: "Total points allowed"
+
+      - name: schedules
+        description: >
+          NFL game schedules including past and future games. Contains game dates,
+          times, teams, Vegas lines, and game results. Future games have NULL values
+          for scores. Primary source for upcoming game predictions.
+        columns:
+          - name: game_id
+            description: "Unique game identifier (format: YYYY_WW_AWAY_HOME)"
+          - name: season
+            description: "NFL season year"
+          - name: game_type
+            description: "Type of game (REG, POST, PRE, SB)"
+          - name: week
+            description: "Week number within the season"
+          - name: gameday
+            description: "Date the game is/was played"
+          - name: gametime
+            description: "Scheduled game time (Eastern)"
+          - name: away_team
+            description: "Away team abbreviation"
+          - name: home_team
+            description: "Home team abbreviation"
+          - name: away_score
+            description: "Away team final score (NULL for future games)"
+          - name: home_score
+            description: "Home team final score (NULL for future games)"
+          - name: result
+            description: "Point differential (home - away, NULL for future games)"
+          - name: total
+            description: "Total points scored (NULL for future games)"
+          - name: spread_line
+            description: "Vegas spread line (negative = home favored)"
+          - name: total_line
+            description: "Vegas over/under line"
+          - name: away_rest
+            description: "Days of rest for away team"
+          - name: home_rest
+            description: "Days of rest for home team"
+          - name: div_game
+            description: "Whether this is a divisional game (1/0)"
+          - name: roof
+            description: "Stadium roof type (outdoors, dome, retractable)"
+          - name: surface
+            description: "Playing surface type"
+          - name: temp
+            description: "Temperature at game time (Fahrenheit)"
+          - name: wind
+            description: "Wind speed at game time (mph)"
+          - name: stadium
+            description: "Stadium name"

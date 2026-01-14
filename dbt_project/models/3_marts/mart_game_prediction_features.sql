@@ -40,7 +40,7 @@ WITH game_schedule AS (
                  WHEN defteam = away_team THEN defteam_score_post
                  END) AS away_score
     FROM {{ ref('int_plays_cleaned') }}
-    WHERE season >= 2020  -- Adjust based on your needs
+    WHERE season >= 2013  -- Adjust based on your needs
     GROUP BY 1, 2, 3, 4, 5, 6, 7
 ),
 

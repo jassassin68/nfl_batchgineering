@@ -551,3 +551,92 @@ models:
           column_name: "team || '-' || season || '-' || season_type"
           config:
             severity: error
+
+  - name: stgnv_schedules
+    description: >
+      NFL game schedules with game dates, times, teams, venues, and Vegas lines.
+      Includes both completed games (with scores) and future games (scores are NULL).
+      Primary source for generating predictions on upcoming games.
+    meta:
+      owner: "data-engineering"
+      layer: "staging"
+      data_grain: "one row per game"
+    columns:
+      - name: game_id
+        description: "Unique game identifier (format: YYYY_WW_AWAY_HOME)"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: season
+        description: "NFL season year"
+        data_type: number
+        tests:
+          - not_null
+      - name: game_type
+        description: "Type of game (REG, POST, PRE, SB)"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: week
+        description: "Week number within the season"
+        data_type: number
+        tests:
+          - not_null
+      - name: gameday
+        description: "Date the game is/was played"
+        data_type: date
+      - name: gametime
+        description: "Scheduled game time (Eastern)"
+        data_type: varchar
+      - name: away_team
+        description: "Away team abbreviation"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: home_team
+        description: "Home team abbreviation"
+        data_type: varchar
+        tests:
+          - not_null
+      - name: away_score
+        description: "Away team final score (NULL for future games)"
+        data_type: number
+      - name: home_score
+        description: "Home team final score (NULL for future games)"
+        data_type: number
+      - name: result
+        description: "Point differential (home - away, NULL for future games)"
+        data_type: number
+      - name: total
+        description: "Total points scored (NULL for future games)"
+        data_type: number
+      - name: spread_line
+        description: "Vegas spread line (negative = home favored)"
+        data_type: number
+      - name: total_line
+        description: "Vegas over/under line"
+        data_type: number
+      - name: away_rest
+        description: "Days of rest for away team"
+        data_type: number
+      - name: home_rest
+        description: "Days of rest for home team"
+        data_type: number
+      - name: div_game
+        description: "Whether this is a divisional game (1 = yes, 0 = no)"
+        data_type: number
+      - name: roof
+        description: "Stadium roof type (outdoors, dome, retractable)"
+        data_type: varchar
+      - name: surface
+        description: "Playing surface type"
+        data_type: varchar
+      - name: temp
+        description: "Temperature at game time (Fahrenheit, NULL for dome games)"
+        data_type: number
+      - name: wind
+        description: "Wind speed at game time (mph, NULL for dome games)"
+        data_type: number
+      - name: stadium
+        description: "Stadium name"
+        data_type: varchar
