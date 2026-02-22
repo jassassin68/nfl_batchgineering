@@ -257,15 +257,34 @@ def main(args):
             print(f"  Improvement: {vegas_baseline['mae'] - elo_vs_vegas['mae']:.2f} points")
 
             # Calculate ATS accuracy (Against The Spread)
-            # Pick side that disagrees most with Vegas
+            # ATS means: did our model correctly predict which side would cover the spread?
+            #
+            # Example: Vegas = -7 (home favored by 7)
+            #   - If Elo predicts -9: we think home wins by MORE → pick home to cover
+            #   - If Elo predicts -5: we think home wins by LESS → pick away to cover
+            #   - spread_diff = -9 - (-7) = -2 (negative means pick home)
+            #   - spread_diff = -5 - (-7) = +2 (positive means pick away)
+
             spread_diff = y_pred[valid_mask] - vegas_spread[valid_mask]
-            elo_picks = np.where(spread_diff > 0, 1, -1)  # 1 = pick home, -1 = pick away
             actual_vs_vegas = y_true[valid_mask] - vegas_spread[valid_mask]
-            correct = (elo_picks * actual_vs_vegas) > 0
+
+            # Both should have the same sign if we predicted correctly
+            # If both negative: we picked home to cover, and home covered ✓
+            # If both positive: we picked away to cover, and away covered ✓
+            # If signs differ: we were wrong ✗
+            correct = (spread_diff * actual_vs_vegas) > 0
 
             ats_accuracy = correct.mean()
             print(f"\n  ATS Accuracy: {ats_accuracy:.1%} ({correct.sum()}/{len(correct)} games)")
             print(f"  (Threshold to beat -110 juice: 52.4%)")
+
+            # Show a few examples for verification
+            print("\n  Sample ATS predictions:")
+            for i in range(min(3, len(correct))):
+                status = "✓" if correct[i] else "✗"
+                print(f"    {status} Vegas: {vegas_spread[valid_mask][i]:+.1f}, "
+                      f"Elo: {y_pred[valid_mask][i]:+.1f}, "
+                      f"Actual: {y_true[valid_mask][i]:+.1f}")
 
     # Save model
     print("\n" + "=" * 80)

@@ -65,7 +65,7 @@ class LoadResult:
 class TrainingDataLoader:
     """Optimized bulk loader for NFL training data"""
     
-    # Dataset URLs - simplified structure
+    # Dataset URLs - simplified structure (per-year files with {year} placeholder)
     DATASET_URLS = {
         'play_by_play': 'https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{year}.parquet',
         'rosters': 'https://github.com/nflverse/nflverse-data/releases/download/rosters/roster_{year}.parquet',
@@ -75,6 +75,11 @@ class TrainingDataLoader:
         'play_by_play_participation': 'https://github.com/nflverse/nflverse-data/releases/download/pbp_participation/pbp_participation_{year}.parquet',
         # only a single file, can be a one time load: 'contracts': 'https://github.com/nflverse/nflverse-data/releases/download/rosters/roster_{year}.parquet',
         'injuries': 'https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_{year}.parquet'
+    }
+
+    # Single-file datasets (no {year} placeholder - contains all seasons in one file)
+    SINGLE_FILE_URLS = {
+        'schedules': 'https://github.com/nflverse/nflverse-data/releases/download/schedules/games.parquet'
     }
     
     # Snowflake type mapping
@@ -272,14 +277,122 @@ class TrainingDataLoader:
             )
             
             return df
-            
+
         except requests.exceptions.RequestException as e:
             logger.error(f"❌ Network error downloading {dataset} {year}: {e}")
             return None
         except Exception as e:
             logger.error(f"❌ Failed to parse {dataset} {year}: {e}", exc_info=True)
             return None
-    
+
+    def download_single_file_data(self, dataset: str) -> Optional[pl.DataFrame]:
+        """
+        Download a single-file dataset (contains all seasons in one file)
+
+        Used for datasets like 'schedules' that don't have per-year files.
+        Returns None if download fails after retries.
+        """
+        if dataset not in self.SINGLE_FILE_URLS:
+            logger.error(f"❌ Unknown single-file dataset: {dataset}")
+            return None
+
+        url = self.SINGLE_FILE_URLS[dataset]
+        logger.info(f"📥 Downloading {dataset} (single file) from {url}")
+
+        try:
+            start_time = time.time()
+
+            # Use session with retry logic
+            response = self._session.get(url, timeout=300, stream=True)
+            response.raise_for_status()
+
+            # Read content in chunks for large files
+            content = BytesIO()
+            downloaded = 0
+            chunk_size = 8192
+
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    content.write(chunk)
+                    downloaded += len(chunk)
+
+                    # Log progress for large downloads
+                    if downloaded % (10 * 1024 * 1024) == 0:  # Every 10MB
+                        logger.debug(f"  Downloaded {downloaded / (1024*1024):.1f}MB...")
+
+            content.seek(0)
+
+            # Parse parquet file
+            df = pl.read_parquet(content)
+
+            # Log original columns and types for debugging
+            logger.debug(f"Original schema ({len(df.columns)} columns):")
+            for col, dtype in list(df.schema.items())[:5]:  # Show first 5
+                logger.debug(f"  {col}: {dtype}")
+
+            # Convert ALL columns to strings to avoid any type issues
+            logger.info(f"Converting all {len(df.columns)} columns to VARCHAR/string format...")
+            df = df.select([
+                pl.col(col).cast(pl.Utf8).alias(col) for col in df.columns
+            ])
+
+            # Add metadata columns (also as strings for consistency)
+            df = df.with_columns([
+                pl.lit('ALL').alias('source_year'),  # Single file contains all years
+                pl.lit('BULK_TRAINING').alias('load_type'),
+                pl.lit(datetime.now().isoformat()).alias('loaded_at')
+            ])
+
+            logger.debug(f"After conversion: all {len(df.columns)} columns are now VARCHAR")
+
+            duration = time.time() - start_time
+            size_mb = downloaded / (1024 * 1024)
+            rows_per_sec = len(df) / duration if duration > 0 else 0
+
+            logger.success(
+                f"✅ Downloaded {dataset}: "
+                f"{len(df):,} rows, {len(df.columns)} columns (all VARCHAR), "
+                f"{size_mb:.1f}MB in {duration:.1f}s ({rows_per_sec:.0f} rows/sec)"
+            )
+
+            return df
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Network error downloading {dataset}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Failed to parse {dataset}: {e}", exc_info=True)
+            return None
+
+    def load_single_file_dataset(self, dataset: str) -> LoadResult:
+        """
+        Load a single-file dataset to Snowflake
+
+        Used for datasets like 'schedules' that contain all seasons in one file.
+        """
+        logger.info(f"🔄 Loading single-file dataset: {dataset}")
+        start_time = time.time()
+
+        # Download the file
+        df = self.download_single_file_data(dataset)
+
+        if df is None:
+            error_msg = f"Failed to download {dataset}"
+            logger.error(f"❌ {error_msg}")
+            return LoadResult(success=False, rows_loaded=0, error_message=error_msg)
+
+        logger.info(
+            f"📊 Dataset: {len(df):,} rows, "
+            f"{len(df.columns)} columns, "
+            f"{df.estimated_size() / (1024**2):.1f}MB"
+        )
+
+        # Load to Snowflake (REPLACE mode to refresh all data)
+        result = self.load_to_snowflake(df, dataset, mode="REPLACE")
+        result.duration_seconds = time.time() - start_time
+
+        return result
+
     def _clean_dataframe_for_snowflake(self, df: pl.DataFrame) -> pl.DataFrame:
         """
         Prepare DataFrame for Snowflake - simplified since all columns are already strings
@@ -722,26 +835,111 @@ class TrainingDataLoader:
 
 def main():
     """Main execution entry point"""
-    setup_logging("DEBUG")  # Changed to DEBUG for more visibility
-    
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="NFL Training Data Loader - Load nflverse data to Snowflake",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Load all per-year datasets (default)
+  python training_data_loader.py
+
+  # Load only schedules (single-file dataset)
+  python training_data_loader.py --datasets schedules
+
+  # Load specific per-year datasets
+  python training_data_loader.py --datasets play_by_play rosters
+
+  # Load with specific years
+  python training_data_loader.py --years 2023 2024
+
+  # Validate only (no loading)
+  python training_data_loader.py --validate-only
+        """
+    )
+
+    # Get all available datasets
+    all_per_year = list(TrainingDataLoader.DATASET_URLS.keys())
+    all_single_file = list(TrainingDataLoader.SINGLE_FILE_URLS.keys())
+    all_datasets = all_per_year + all_single_file
+
+    parser.add_argument(
+        '--datasets',
+        nargs='+',
+        choices=all_datasets,
+        help=f"Specific datasets to load. Per-year: {all_per_year}. Single-file: {all_single_file}"
+    )
+    parser.add_argument(
+        '--years',
+        nargs='+',
+        type=int,
+        default=list(range(2014, 2026)),
+        help="Years to load for per-year datasets (default: 2014-2025)"
+    )
+    parser.add_argument(
+        '--validate-only',
+        action='store_true',
+        help="Only validate existing data, don't load new data"
+    )
+    parser.add_argument(
+        '--log-level',
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        default='INFO',
+        help="Logging level (default: INFO)"
+    )
+
+    args = parser.parse_args()
+
+    setup_logging(args.log_level)
+
     logger.info("🏈 NFL Training Data Loader Starting")
     logger.info(f"📅 Timestamp: {datetime.now().isoformat()}")
-    
+
     try:
         # Use context manager for automatic cleanup
         with TrainingDataLoader() as loader:
-            # Configure years to load
-            # training_years = [2024]  # Start with just one year for testing
-            training_years = list(range(2014, 2025))  # Full dataset
-            
-            logger.info(f"🎯 Loading data for years: {training_years}")
-            
-            # Load all data
-            results = loader.load_all_training_data(training_years)
-            
+
+            if args.validate_only:
+                logger.info("🔍 Validate-only mode")
+                validation = loader.validate_data()
+                return 0
+
+            results = {}
+
+            # Determine which datasets to load
+            datasets_to_load = args.datasets if args.datasets else all_per_year
+
+            # Separate per-year and single-file datasets
+            per_year_datasets = [d for d in datasets_to_load if d in all_per_year]
+            single_file_datasets = [d for d in datasets_to_load if d in all_single_file]
+
+            # Load per-year datasets
+            if per_year_datasets:
+                logger.info(f"🎯 Loading per-year datasets for years: {args.years}")
+                logger.info(f"📦 Datasets: {per_year_datasets}")
+
+                for i, dataset in enumerate(per_year_datasets, 1):
+                    logger.info(f"\n{'='*60}")
+                    logger.info(f"📊 Dataset {i}/{len(per_year_datasets)}: {dataset}")
+                    logger.info(f"{'='*60}")
+
+                    results[dataset] = loader.bulk_load_dataset(dataset, args.years)
+
+            # Load single-file datasets
+            if single_file_datasets:
+                logger.info(f"\n🎯 Loading single-file datasets: {single_file_datasets}")
+
+                for i, dataset in enumerate(single_file_datasets, 1):
+                    logger.info(f"\n{'='*60}")
+                    logger.info(f"📊 Single-file dataset {i}/{len(single_file_datasets)}: {dataset}")
+                    logger.info(f"{'='*60}")
+
+                    results[dataset] = loader.load_single_file_dataset(dataset)
+
             # Validate
             validation = loader.validate_data()
-            
+
             # Print detailed results
             logger.info("\n📊 DETAILED RESULTS:")
             for dataset, result in results.items():
@@ -749,10 +947,10 @@ def main():
                     logger.info(f"  ✅ {dataset}: {result.rows_loaded:,} rows in {result.duration_seconds:.1f}s")
                 else:
                     logger.error(f"  ❌ {dataset}: {result.error_message}")
-            
+
             # Final status
             all_successful = all(r.success for r in results.values())
-            
+
             if all_successful:
                 logger.success("🎉 All training data loaded successfully!")
                 logger.info("📋 Next steps: Run dbt staging models")
@@ -760,7 +958,7 @@ def main():
             else:
                 logger.warning("⚠️ Some datasets failed to load")
                 return 1
-                
+
     except KeyboardInterrupt:
         logger.warning("⚡ Load interrupted by user")
         return 130

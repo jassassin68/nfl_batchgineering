@@ -41,7 +41,8 @@ SELECT
     vegas_total,
     -- Calculate implied home win probability from spread
     CASE
-        WHEN vegas_spread IS NOT NULL THEN 0.50 + (ABS(vegas_spread) * 0.033)
+        WHEN vegas_spread::number < 0 THEN 0.50 - (ABS(vegas_spread) * 0.033)
+        WHEN vegas_spread::number > 0 THEN 0.50 + (ABS(vegas_spread) * 0.033)
         ELSE 0.50
     END AS vegas_home_win_prob,
     CASE

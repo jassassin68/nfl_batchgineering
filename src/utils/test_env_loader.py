@@ -3,6 +3,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import snowflake.connector
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 
 
 
@@ -16,26 +18,59 @@ print(f".env exists: {env_path.exists()}")
 if env_path.exists():
     load_dotenv(env_path)
     print("✅ .env loaded successfully")
-    
-    # Check key variables
+
+    # Check key variables for key pair authentication
     account = os.getenv('SNOWFLAKE_ACCOUNT')
     user = os.getenv('SNOWFLAKE_USER')
-    
+    private_key = os.getenv('SNOWFLAKE_KEYPAIR_PRIVATE_KEY')
+    passphrase = os.getenv('SNOWFLAKE_KEYPAIR_PASSPHRASE')
+
     print(f"SNOWFLAKE_ACCOUNT: {'✅ Found' if account else '❌ Missing'}")
     print(f"SNOWFLAKE_USER: {'✅ Found' if user else '❌ Missing'}")
+    print(f"SNOWFLAKE_KEYPAIR_PRIVATE_KEY: {'✅ Found' if private_key else '❌ Missing'}")
+    print(f"SNOWFLAKE_KEYPAIR_PASSPHRASE: {'✅ Found' if passphrase else '⚠️ Not set (optional)'}")
 else:
     print("❌ .env file not found")
 
 def test_connection_formats():
-    """Test different account format variations"""
-    
+    """Test different account format variations using key pair authentication"""
+
     base_account = os.getenv('SNOWFLAKE_ACCOUNT')
     username = os.getenv('SNOWFLAKE_USER')
-    password = os.getenv('SNOWFLAKE_PASSWORD')
-    
+    private_key_text = os.getenv('SNOWFLAKE_KEYPAIR_PRIVATE_KEY')
+    passphrase = os.getenv('SNOWFLAKE_KEYPAIR_PASSPHRASE')
+
     print(f"🔍 Original account from .env: {base_account}")
     print(f"👤 Username: {username}")
-    print(f"🔑 Password: {'***' if password else 'MISSING'}")
+    print(f"🔑 Private Key: {'***' if private_key_text else 'MISSING'}")
+    print(f"🔐 Passphrase: {'***' if passphrase else 'Not set (optional)'}")
+
+    if not private_key_text:
+        print("❌ Missing SNOWFLAKE_KEYPAIR_PRIVATE_KEY - cannot test connection")
+        return None
+
+    # Replace literal \n with actual newlines (needed for .env file format)
+    private_key_text = private_key_text.replace('\\n', '\n')
+
+    # Decode the private key
+    try:
+        private_key = serialization.load_pem_private_key(
+            private_key_text.encode(),
+            password=passphrase.encode() if passphrase else None,
+            backend=default_backend()
+        )
+
+        # Get private key bytes in DER format
+        pkb = private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        print("✅ Private key decoded successfully")
+    except Exception as e:
+        print(f"❌ Failed to decode private key: {e}")
+        print("💡 Hint: Make sure the key in .env is on a single line with \\n for newlines")
+        return None
     
     # Different account formats to try
     account_formats = []
@@ -69,7 +104,7 @@ def test_connection_formats():
             conn = snowflake.connector.connect(
                 account=account,
                 user=username,
-                password=password,
+                private_key=pkb,  # Use key pair authentication
                 role='ACCOUNTADMIN',
                 login_timeout=30,
                 network_timeout=30,
