@@ -1,795 +1,373 @@
 # nfl_batchgineering
-Manage code related to data work using NFL datasets
 
-# NFL Prediction System - Project Plan
+An end-to-end NFL game prediction system targeting point spread and totals betting. The pipeline ingests play-by-play and schedule data from nflverse, transforms it through a layered dbt project in Snowflake, trains a hybrid ensemble ML model, and generates weekly predictions — all orchestrated by Dagster.
 
-## Project Overview
-Build a data pipeline and ML system to predict NFL player stats and team outcomes (spreads, totals) using nflverse data, targeting next week's games with ~20 hours of development time.
+**Primary Goal**: Achieve >52.4% ATS (against-the-spread) accuracy to overcome standard -110 juice.
+
+---
 
 ## Tech Stack
-- **Database**: Snowflake (primary compute/storage)
-- **ETL/Transformations**: dbt + SQL-first approach
-- **Data Ingestion**: Python with `nfl_data_py`, `polars`, `uv`
-- **ML**: Python with `XGBoost`, `polars`, `scikit-learn`
-- **Orchestration**: Dagster (for complex workflows), cron (for simple scheduling)
-- **Code Quality**: `ruff` for linting/formatting
+
+| Layer | Technology |
+|---|---|
+| Data Warehouse | Snowflake |
+| Data Transformations | dbt (dbt-snowflake) |
+| Data Ingestion | Python · Polars · nflverse parquet releases |
+| ML Models | XGBoost · PyMC (Bayesian) · PyTorch (Neural Net) · scikit-learn |
+| Orchestration | Dagster (assets, jobs, schedules) |
+| Code Quality | ruff (lint + format) |
+| Logging | loguru |
+| Auth | Snowflake key-pair authentication |
+| Runtime | Python 3.11+ |
+
+---
 
 ## Repository Structure
+
 ```
-nfl-prediction-system/
-├── README.md
-├── pyproject.toml              # uv/ruff config
-├── .env.example               # Environment variables template
-├── requirements.txt           # Python dependencies
-├── dagster_project/           # Dagster orchestration
-│   ├── __init__.py
-│   ├── assets/               # Data assets
-│   ├── jobs/                 # Job definitions
-│   └── schedules/            # Scheduling
-├── dbt_project/              # dbt transformations
-│   ├── dbt_project.yml
-│   ├── profiles.yml
+nfl_batchgineering/
+├── dagster_project/               # Dagster orchestration definitions
+│   ├── __init__.py                # Definitions entry point (assets, jobs, schedules)
+│   ├── constants.py               # Shared path constants
+│   ├── assets/
+│   │   ├── ingestion.py           # nflverse → Snowflake raw assets
+│   │   ├── dbt_assets.py          # dbt model assets (auto-generated from manifest)
+│   │   ├── ml_training.py         # XGBoost training asset
+│   │   └── predictions.py         # Weekly predictions asset
+│   ├── jobs/
+│   │   └── weekly_pipeline.py     # Full pipeline job definition
+│   ├── resources/
+│   │   └── dbt_resource.py        # dbt CLI resource configuration
+│   └── schedules/
+│       └── weekly_schedule.py     # Tuesday 8AM NFL-season schedule
+│
+├── dbt_project/                   # dbt transformations
+│   ├── dbt_project.yml            # Project config (lookback: 10 seasons)
 │   ├── models/
-│   │   ├── staging/          # Raw data cleaning
-│   │   ├── intermediate/     # Feature engineering
-│   │   └── marts/           # Final modeling datasets
-│   ├── macros/              # Reusable SQL functions
-│   └── tests/               # Data quality tests
+│   │   ├── 1_staging/nflverse/    # Cleaned views over raw Snowflake tables
+│   │   │   ├── stgnv_play_by_play.sql
+│   │   │   ├── stgnv_player_summary_stats.sql
+│   │   │   ├── stgnv_team_summary_stats.sql
+│   │   │   ├── stgnv_rosters.sql
+│   │   │   ├── stgnv_schedules.sql
+│   │   │   ├── stgnv_injuries.sql
+│   │   │   └── stgnv_play_by_play_participation.sql
+│   │   ├── 2_intermediate/        # Feature engineering (views + materialized tables)
+│   │   │   ├── int_plays_cleaned.sql
+│   │   │   ├── int_team_offensive_metrics.sql     # Rolling 4-week EPA/play
+│   │   │   ├── int_team_defensive_strength.sql    # Rolling defensive EPA allowed
+│   │   │   ├── int_situational_efficiency.sql     # Red zone, 3rd down, etc.
+│   │   │   ├── int_game_vegas_lines.sql           # Opening lines, line movement
+│   │   │   └── int_upcoming_games.sql             # Future schedule with context
+│   │   └── 3_marts/               # Final ML-ready tables
+│   │       ├── mart_predictive_features.sql       # Per-team, per-week feature set
+│   │       ├── mart_game_prediction_features.sql  # Historical game rows for training
+│   │       ├── mart_upcoming_game_predictions.sql # Upcoming games for inference
+│   │       ├── mart_weather_impact_metrics.sql    # Weather-adjusted efficiency
+│   │       └── mart_model_validation.sql          # Walk-forward validation dataset
+│   ├── macros/
+│   └── tests/
+│
 ├── src/
-│   ├── ingestion/           # Data loading scripts
-│   ├── ml/                  # ML model code
-│   └── utils/               # Shared utilities
-├── sql/                     # Ad-hoc SQL scripts
-├── models/                  # Trained model artifacts
-└── notebooks/               # Analysis/exploration
+│   ├── ingestion/
+│   │   └── training_data_loader.py   # Bulk parquet → Snowflake loader (Polars)
+│   └── ml/
+│       ├── base.py                    # Abstract BasePredictor interface
+│       ├── models/
+│       │   ├── spread_predictor.py    # XGBoost spread model
+│       │   ├── elo_model.py           # Elo rating baseline
+│       │   ├── bayesian.py            # Bayesian state-space model (PyMC)
+│       │   ├── neural.py              # Shallow neural network (PyTorch)
+│       │   └── ensemble.py            # Ridge stacking meta-learner
+│       ├── utils/
+│       │   ├── feature_engineering.py # Feature selection and preparation
+│       │   ├── evaluation.py          # ATS accuracy, Brier score, RMSE
+│       │   └── validation.py          # Walk-forward CV helpers
+│       ├── train_spread_model.py      # XGBoost training entry point
+│       ├── train_elo_model.py         # Elo model training
+│       ├── train_ensemble.py          # Full ensemble training
+│       └── predict.py                 # Inference: load models → generate predictions
+│
+├── models/                        # Serialized model artifacts (.pkl, .json)
+├── data/                          # Prediction CSV outputs
+├── notebooks/                     # Exploratory analysis
+├── snowflake_sql/                 # Ad-hoc SQL scripts
+├── logs/                          # Rotating application logs
+├── pyproject.toml                 # Project metadata, uv/ruff config
+├── requirements.txt               # Python dependencies
+├── TESTING_GUIDE.md               # dbt layer validation walkthrough
+└── CLAUDE.md                      # AI assistant project instructions
 ```
 
-## Phase 1: Infrastructure Setup (4 hours)
+---
 
-### 1.1 Repository & Environment Setup (1 hour)
-- [x] Initialize GitHub repository with proper `.gitignore`
-- [x] Set up `uv` for dependency management
-- [x] Configure `ruff` for code formatting/linting
-- [x] Create basic `pyproject.toml`
+## Data Pipeline Overview
 
-### 1.2 Snowflake Setup (1 hour)
-- [x] Create Snowflake trial account
-- [x] Set up database/schema structure:
-  ```sql
-  CREATE DATABASE NFL_ANALYTICS;
-  CREATE SCHEMA NFL_ANALYTICS.RAW;        -- External tables pointing to nflverse
-  CREATE SCHEMA NFL_ANALYTICS.STAGING;    -- Cleaned data (views)
-  CREATE SCHEMA NFL_ANALYTICS.INTERMEDIATE; -- Feature engineering (selective tables)
-  CREATE SCHEMA NFL_ANALYTICS.MARTS;      -- Final ML datasets (tables)
-  CREATE SCHEMA NFL_ANALYTICS.ML;         -- ML artifacts/predictions
-  ```
-- [x] Configure connection parameters
+```
+nflverse GitHub Releases (parquet)
+         │
+         ▼
+ TrainingDataLoader (Polars + Snowflake connector)
+         │  bulk COPY INTO
+         ▼
+ Snowflake RAW.NFLVERSE  ──────────────────────────────────────┐
+         │                                                       │
+         ▼  dbt run                                             │
+ 1_staging (views)                                              │
+  · stgnv_play_by_play                                          │
+  · stgnv_schedules, stgnv_rosters                              │
+  · stgnv_player/team_summary_stats                             │
+  · stgnv_injuries, stgnv_pbp_participation                     │
+         │                                                       │
+         ▼  dbt run                                             │
+ 2_intermediate (views + tables)                                │
+  · int_plays_cleaned                                           │
+  · int_team_offensive_metrics  (rolling EPA/play)              │
+  · int_team_defensive_strength (rolling EPA allowed)           │
+  · int_situational_efficiency                                  │
+  · int_game_vegas_lines                                        │
+  · int_upcoming_games                                          │
+         │                                                       │
+         ▼  dbt run                                             │
+ 3_marts (tables)                                               │
+  · mart_game_prediction_features  ← training data             │
+  · mart_predictive_features       ← per-team feature store    │
+  · mart_upcoming_game_predictions ← inference input           │
+  · mart_model_validation                                       │
+  · mart_weather_impact_metrics                                 │
+         │                                                       │
+         ▼  Python                                              │
+ ML Training (Snowflake → Polars → sklearn/XGBoost/PyMC)       │
+  · SpreadPredictor (XGBoost)                                   │
+  · EloModel (baseline)                                         │
+  · BayesianStateSpace (PyMC AR(1))                             │
+  · NeuralNetPredictor (PyTorch)                                │
+  · StackingEnsemble (Ridge meta-learner)                       │
+         │                                                       │
+         ▼  Python                                              │
+ Weekly Predictions → Snowflake ML schema + CSV output ────────┘
+```
 
-### 1.3 Simple Data Loading (1 hour)
-- [x] Create `training_data_loader.py` using polars + DuckDB for performance
-- [x] Set up Snowflake table structures for training data
-- [x] Bulk download historical data (10 years) from nflverse GitHub URLs:
-- [x] Load data to Snowflake native tables using fast parquet + COPY INTO method
-- [x] Validate data structure and completeness with Snowflake-powered analytics
-- [x] Verify 10 years of complete training data loaded successfully
+---
 
-**Key Features:**
-- **Training-focused**: Simple bulk replacement loads, no incremental complexity
-- **High performance**: polars + Snowflake-native instead of pandas for 5-10x speed improvement
-- **Future-ready**: Easy to enhance for weekly incremental updates post-training
+## ML Model Architecture
 
-### 1.4 dbt Setup (1 hour)
-- [ ] Install dbt-snowflake
-- [ ] Initialize dbt project with Snowflake profile
-- [ ] Configure sources to point to external tables
-- [ ] Create basic model structure and testing framework
-- [ ] Set up dbt documentation
+The system uses a stacking ensemble of four base models, combined by a Ridge regression meta-learner:
 
-## Phase 2: dbt Data Transformations (6 hours)
+```
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│   XGBoost   │  │  Bayesian   │  │   Neural    │  │    Elo      │
+│  Regressor  │  │ State-Space │  │   Network   │  │  Baseline   │
+│ (max_depth4)│  │  (PyMC AR1) │  │ (PyTorch,   │  │  (Glickman) │
+│ (lr=0.05)   │  │             │  │  ≤3 layers) │  │             │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       └────────────────┴────────────────┴────────────────┘
+                              │
+                   ┌──────────┴──────────┐
+                   │   Ridge Regression  │
+                   │   Meta-Learner      │
+                   │   (+ uncertainty)   │
+                   └──────────┬──────────┘
+                              │
+                   ┌──────────┴──────────┐
+                   │  Betting Decision   │
+                   │  (edge ≥ 3 pts →   │
+                   │   0.25x Kelly bet) │
+                   └─────────────────────┘
+```
 
-### 2.1 Staging Models - External Table Integration (2 hours)
-Clean and standardize data from external tables (materialized as VIEWS):
+All models implement the `BasePredictor` abstract interface (`src/ml/base.py`) providing `fit()`, `predict()`, `predict_proba()`, `save_model()`, and `load_model()`.
+
+### Validation Strategy
+
+Walk-forward cross-validation is **required** — random splits are never used:
+
+- Train on seasons `[t-n ... t-1]`, test on season `t`
+- Repeat sliding the window forward for each available test season
+- Target metrics: ATS Accuracy (>52.4%), Brier Score, RMSE vs Vegas line
+
+---
+
+## Dagster Orchestration
+
+The Dagster project (`dagster_project/`) defines the full pipeline as software-defined assets:
+
+| Asset | Description |
+|---|---|
+| `raw_nflverse_data` | Loads current-season parquet datasets to Snowflake |
+| `raw_schedules` | Loads full schedules file (all seasons, full replace) |
+| `nfl_dbt_assets` | Runs dbt models (staging → intermediate → marts) |
+| `trained_xgboost_model` | Trains XGBoost spread predictor, saves to `models/` |
+| `weekly_predictions` | Loads upcoming games mart, runs ensemble inference, writes to Snowflake + CSV |
+
+**Schedule**: Every Tuesday at 8:00 AM during the NFL season (September–February). The schedule auto-derives the current NFL week and season from the execution date.
+
+To launch the Dagster UI locally:
+```bash
+dagster dev -m dagster_project
+```
+
+---
+
+## Snowflake Schema Structure
 
 ```sql
--- models/staging/sources.yml
-sources:
-  - name: raw
-    description: Native Snowflake tables loaded from nflverse via bulk Python loading
-    database: NFL_ANALYTICS
-    schema: RAW
-    tables:
-      - name: player_stats
-      - name: play_by_play
-      - name: schedules
-      - name: rosters
-
--- models/staging/stg_play_by_play.sql
--- Read from native Snowflake tables, standardize columns, basic filtering
-SELECT 
-  game_id,
-  season, 
-  week,
-  UPPER(TRIM(posteam)) AS posteam,
-  CASE WHEN rush_attempt = 1 THEN TRUE ELSE FALSE END AS is_rush,
-  epa,
-  -- Include load metadata
-  load_type,
-  loaded_at
-FROM {{ source('raw', 'play_by_play') }}
-WHERE season >= {{ var('current_season') - var('lookback_seasons') }}
-
--- models/staging/stg_player_stats.sql  
--- Clean player statistics, handle position changes
--- models/staging/stg_schedules.sql
--- Standardize team names, parse betting lines
--- models/staging/stg_rosters.sql
--- Clean roster data with player mappings
+NFL_ANALYTICS.RAW.NFLVERSE       -- Bulk-loaded parquet tables
+NFL_ANALYTICS.STAGING            -- dbt views (stgnv_*)
+NFL_ANALYTICS.INTERMEDIATE       -- dbt views/tables (int_*)
+NFL_ANALYTICS.MARTS              -- dbt materialized tables (mart_*)
+NFL_ANALYTICS.ML                 -- Model artifacts and predictions
 ```
 
-### 2.2 Intermediate Models - Feature Engineering (3 hours)
-**Selective materialization - only materialize complex calculations as TABLES**
+---
 
-**Player Features (TABLE - complex window functions):**
-```sql
--- models/intermediate/int_player_rolling_stats.sql
-{{ config(materialized='table') }}  -- Materialize for performance
+## Setup
 
-WITH rolling_calculations AS (
-  SELECT 
-    player_id,
-    game_date,
-    -- Heavy computation - worth materializing
-    AVG(fantasy_points) OVER (
-      PARTITION BY player_id 
-      ORDER BY game_date 
-      ROWS BETWEEN 4 PRECEDING AND 1 PRECEDING
-    ) AS fantasy_points_5game_avg,
-    AVG(targets) OVER (
-      PARTITION BY player_id 
-      ORDER BY game_date 
-      ROWS BETWEEN 9 PRECEDING AND 1 PRECEDING
-    ) AS targets_10game_avg
-  FROM {{ ref('stg_player_stats') }}
-)
+### Prerequisites
+- Python 3.11+
+- Snowflake account with key-pair authentication configured
+- dbt CLI (installed via `dbt-snowflake`)
 
--- models/intermediate/int_player_situational_stats.sql
-{{ config(materialized='view') }}  -- Simple aggregations, keep as view
--- Red zone performance, down/distance splits
--- Weather/dome performance, prime time performance
-```
-
-**Team Features (TABLE - aggregations across large datasets):**
-```sql
--- models/intermediate/int_team_offensive_metrics.sql
-{{ config(materialized='table') }}  -- Materialize team aggregations
-
-WITH team_offense AS (
-  SELECT 
-    posteam AS team,
-    season,
-    week,
-    AVG(epa) AS avg_epa_per_play,
-    SUM(CASE WHEN yards_gained >= 10 THEN 1 ELSE 0 END) / COUNT(*) AS explosive_play_rate,
-    SUM(CASE WHEN is_first_down THEN 1 ELSE 0 END) / COUNT(*) AS success_rate
-  FROM {{ ref('stg_play_by_play') }}
-  WHERE is_rush OR is_pass
-  GROUP BY posteam, season, week
-)
-
--- models/intermediate/int_team_defensive_metrics.sql
-{{ config(materialized='table') }}
--- Defensive EPA allowed, pressure rates, coverage metrics
-
--- models/intermediate/int_team_situational_factors.sql
-{{ config(materialized='view') }}  -- Simple joins, keep as view
--- Home/away splits, division games, rest advantage
-```
-
-### 2.3 Marts - Final Modeling Datasets (1 hour)
-**Always materialized as TABLES for ML performance**
-
-```sql
--- models/marts/fct_player_game_predictions.sql
-{{ config(
-  materialized='table',
-  schema='marts'
-) }}
-
--- Final dataset for player stat predictions
--- One row per player per upcoming game
-WITH player_base AS (
-  SELECT DISTINCT
-    p.player_id,
-    p.player_name,
-    p.position,
-    p.team,
-    s.game_id,
-    s.game_date,
-    s.home_team,
-    s.away_team
-  FROM {{ ref('stg_rosters') }} p
-  JOIN {{ ref('stg_schedules') }} s ON p.team IN (s.home_team, s.away_team)
-  WHERE s.game_date > CURRENT_DATE()  -- Only future games
-),
-
-enriched_features AS (
-  SELECT 
-    pb.*,
-    -- Rolling stats
-    pr.fantasy_points_5game_avg,
-    pr.targets_10game_avg,
-    -- Team context
-    CASE WHEN pb.team = pb.home_team THEN tom.avg_epa_per_play ELSE toa.avg_epa_per_play END AS team_offensive_epa,
-    -- Opponent defense
-    CASE WHEN pb.team = pb.home_team THEN tda.avg_epa_allowed ELSE tdm.avg_epa_allowed END AS opp_defensive_epa
-  FROM player_base pb
-  LEFT JOIN {{ ref('int_player_rolling_stats') }} pr 
-    ON pb.player_id = pr.player_id
-  LEFT JOIN {{ ref('int_team_offensive_metrics') }} tom 
-    ON pb.home_team = tom.team
-  LEFT JOIN {{ ref('int_team_offensive_metrics') }} toa 
-    ON pb.away_team = toa.team
-  LEFT JOIN {{ ref('int_team_defensive_metrics') }} tdm 
-    ON pb.home_team = tdm.team  
-  LEFT JOIN {{ ref('int_team_defensive_metrics') }} tda 
-    ON pb.away_team = tda.team
-)
-
-SELECT * FROM enriched_features
-
--- models/marts/fct_team_game_predictions.sql
-{{ config(
-  materialized='table',
-  schema='marts' 
-) }}
-
--- Final dataset for spread/total predictions  
--- One row per game with both teams' features
-WITH upcoming_games AS (
-  SELECT 
-    game_id,
-    game_date,
-    home_team,
-    away_team,
-    spread_line,
-    total_line
-  FROM {{ ref('stg_schedules') }}
-  WHERE game_date > CURRENT_DATE()
-),
-
-team_features AS (
-  SELECT 
-    ug.*,
-    -- Home team metrics
-    tom_h.avg_epa_per_play AS home_offensive_epa,
-    tdm_h.avg_epa_allowed AS home_defensive_epa,
-    -- Away team metrics  
-    tom_a.avg_epa_per_play AS away_offensive_epa,
-    tdm_a.avg_epa_allowed AS away_defensive_epa,
-    -- Situational factors
-    tsf.rest_advantage,
-    tsf.is_division_game
-  FROM upcoming_games ug
-  LEFT JOIN {{ ref('int_team_offensive_metrics') }} tom_h ON ug.home_team = tom_h.team
-  LEFT JOIN {{ ref('int_team_defensive_metrics') }} tdm_h ON ug.home_team = tdm_h.team  
-  LEFT JOIN {{ ref('int_team_offensive_metrics') }} tom_a ON ug.away_team = tom_a.team
-  LEFT JOIN {{ ref('int_team_defensive_metrics') }} tdm_a ON ug.away_team = tdm_a.team
-  LEFT JOIN {{ ref('int_team_situational_factors') }} tsf ON ug.game_id = tsf.game_id
-)
-
-SELECT * FROM team_features
-```
-
-## Phase 3: ML Model Development (4 hours)
-
-### 3.1 Model Infrastructure (1 hour)
-```python
-# src/ml/base_model.py
-from abc import ABC, abstractmethod
-import polars as pl
-import xgboost as xgb
-import snowflake.connector
-
-class BaseModel(ABC):
-    def __init__(self, connection_params: dict):
-        self.conn = snowflake.connector.connect(**connection_params)
-    
-    def load_data_from_snowflake(self, query: str) -> pl.DataFrame:
-        """Load data directly from Snowflake marts"""
-        cursor = self.conn.cursor()
-        cursor.execute(query)
-        results = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
-        return pl.DataFrame(results, schema=columns)
-    
-    @abstractmethod
-    def prepare_features(self, df: pl.DataFrame) -> pl.DataFrame:
-        pass
-    
-    @abstractmethod  
-    def train(self, df: pl.DataFrame) -> None:
-        pass
-        
-    @abstractmethod
-    def predict(self, df: pl.DataFrame) -> pl.DataFrame:
-        pass
-```
-
-### 3.2 Player Stat Models (1.5 hours)
-```python
-# src/ml/player_models.py
-class PlayerStatModel(BaseModel):
-    """Predict player statistics (yards, TDs, receptions, etc.)"""
-    
-    def __init__(self, connection_params: dict, stat_type: str, position: str):
-        super().__init__(connection_params)
-        self.stat_type = stat_type  # 'fantasy_points', 'receiving_yards', etc.
-        self.position = position    # 'QB', 'RB', 'WR', 'TE'
-        self.model = xgb.XGBRegressor(
-            n_estimators=100,
-            max_depth=6,
-            learning_rate=0.1,
-            subsample=0.8
-        )
-        
-    def load_training_data(self) -> pl.DataFrame:
-        """Load historical player data for training"""
-        query = f"""
-        SELECT *
-        FROM NFL_ANALYTICS.MARTS.FCT_PLAYER_GAME_PREDICTIONS
-        WHERE position = '{self.position}'
-          AND game_date < CURRENT_DATE()
-          AND {self.stat_type} IS NOT NULL
-        ORDER BY game_date DESC
-        LIMIT 10000
-        """
-        return self.load_data_from_snowflake(query)
-        
-    def load_prediction_data(self) -> pl.DataFrame:
-        """Load upcoming games for predictions"""
-        query = f"""
-        SELECT *
-        FROM NFL_ANALYTICS.MARTS.FCT_PLAYER_GAME_PREDICTIONS  
-        WHERE position = '{self.position}'
-          AND game_date >= CURRENT_DATE()
-        """
-        return self.load_data_from_snowflake(query)
-        
-    def prepare_features(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Prepare features for ML model"""
-        feature_cols = [
-            'fantasy_points_5game_avg',
-            'targets_10game_avg',
-            'team_offensive_epa',
-            'opp_defensive_epa',
-            # Add more position-specific features
-        ]
-        
-        if self.position in ['WR', 'TE']:
-            feature_cols.extend([
-                'target_share_5game_avg',
-                'air_yards_share_5game_avg'
-            ])
-        elif self.position == 'RB':
-            feature_cols.extend([
-                'carries_5game_avg',
-                'goal_line_carries_avg'
-            ])
-            
-        return df.select(feature_cols + [self.stat_type])
-```
-
-### 3.3 Team Outcome Models (1.5 hours)
-```python
-# src/ml/team_models.py  
-class SpreadModel(BaseModel):
-    """Predict point spreads"""
-    
-    def __init__(self, connection_params: dict):
-        super().__init__(connection_params)
-        self.model = xgb.XGBRegressor(
-            objective='reg:squarederror',
-            n_estimators=200,
-            max_depth=8,
-            learning_rate=0.05
-        )
-    
-    def load_training_data(self) -> pl.DataFrame:
-        """Load historical game data with outcomes"""
-        query = """
-        WITH historical_games AS (
-          SELECT 
-            tgp.*,
-            s.away_score - s.home_score AS actual_spread,
-            s.away_score + s.home_score AS actual_total
-          FROM NFL_ANALYTICS.MARTS.FCT_TEAM_GAME_PREDICTIONS tgp
-          JOIN NFL_ANALYTICS.STAGING.STG_SCHEDULES s 
-            ON tgp.game_id = s.game_id
-          WHERE s.away_score IS NOT NULL  -- Game has been played
-            AND s.game_date >= '2019-01-01'
-        )
-        SELECT * FROM historical_games
-        ORDER BY game_date DESC
-        """
-        return self.load_data_from_snowflake(query)
-    
-    def prepare_features(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Prepare team-level features"""
-        feature_cols = [
-            'home_offensive_epa',
-            'home_defensive_epa', 
-            'away_offensive_epa',
-            'away_defensive_epa',
-            'rest_advantage',
-            'is_division_game',
-            'spread_line'  # Market spread as feature
-        ]
-        return df.select(feature_cols + ['actual_spread'])
-        
-class TotalModel(BaseModel):
-    """Predict game totals (over/under)"""
-    
-    def __init__(self, connection_params: dict):
-        super().__init__(connection_params)
-        self.model = xgb.XGBRegressor(
-            objective='reg:squarederror',
-            n_estimators=150,
-            max_depth=6
-        )
-        
-    def prepare_features(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Prepare features for total points prediction"""
-        feature_cols = [
-            'home_offensive_epa',
-            'away_offensive_epa',
-            'home_defensive_epa',
-            'away_defensive_epa', 
-            'total_line',  # Market total as feature
-            'weather_wind_speed',
-            'is_dome_game'
-        ]
-        return df.select(feature_cols + ['actual_total'])
-```
-
-## Phase 4: Orchestration & Automation (2 hours)
-
-### 4.1 Simple Automation Setup (1 hour)
-**Start with simple cron-based scheduling, upgrade to Dagster later if needed**
+### Install
 
 ```bash
-# scripts/weekly_refresh.sh
-#!/bin/bash
-# Weekly data refresh - run Tuesdays after MNF
+# Clone and create virtual environment
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
-echo "Starting weekly refresh..."
+pip install -r requirements.txt
+```
 
-# Refresh external tables (automatic with nflverse updates)
-echo "External tables auto-refresh with nflverse updates"
+### Environment Variables
 
-# Run dbt transformations
+Create a `.env` file at the project root:
+
+```dotenv
+SNOWFLAKE_ACCOUNT=your_account_identifier
+SNOWFLAKE_USER=your_username
+SNOWFLAKE_WAREHOUSE=NFL_ANALYTICS_WH
+SNOWFLAKE_DATABASE=NFL_ANALYTICS
+SNOWFLAKE_SCHEMA=RAW
+SNOWFLAKE_ROLE=your_role
+
+# Key-pair authentication
+SNOWFLAKE_KEYPAIR_PRIVATE_KEY="-----BEGIN ENCRYPTED PRIVATE KEY-----\n...\n-----END ENCRYPTED PRIVATE KEY-----"
+SNOWFLAKE_KEYPAIR_PASSPHRASE=your_key_passphrase
+```
+
+### dbt Profile
+
+Add the following to `~/.dbt/profiles.yml`:
+
+```yaml
+nfl_batchgineering:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key: "{{ env_var('SNOWFLAKE_KEYPAIR_PRIVATE_KEY') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_KEYPAIR_PASSPHRASE') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+      database: NFL_ANALYTICS
+      warehouse: NFL_ANALYTICS_WH
+      schema: STAGING
+      threads: 4
+```
+
+---
+
+## Running the Pipeline
+
+### 1. Load raw data to Snowflake
+
+```bash
+python src/ingestion/training_data_loader.py
+```
+
+Loads the following nflverse datasets for the current season (historical years are a one-time load):
+- `play_by_play` — full play-by-play with EPA
+- `rosters` — active and historical rosters
+- `player_summary_stats` — per-player season/weekly stats
+- `team_summary_stats` — per-team summary stats
+- `play_by_play_participation` — player participation per play
+- `injuries` — weekly injury reports
+- `schedules` — full schedule with Vegas lines (all seasons, single file)
+
+### 2. Run dbt transformations
+
+```bash
 cd dbt_project
-dbt run --select marts
-dbt test --select marts
-
-# Retrain models
-cd ../
-python src/ml/train_models.py --retrain
-
-# Generate predictions for upcoming week  
-python src/ml/predict.py --week next
-
-echo "Weekly refresh complete!"
+dbt run        # Build all models
+dbt test       # Run data quality tests
 ```
 
-```python
-# src/ml/train_models.py
-"""Simple model training script"""
-import click
-from ml.player_models import PlayerStatModel
-from ml.team_models import SpreadModel, TotalModel
-from utils.snowflake_connection import get_connection_params
-
-@click.command()
-@click.option('--retrain', is_flag=True, help='Retrain all models')
-@click.option('--position', help='Train models for specific position only')
-def main(retrain: bool, position: str):
-    """Train ML models"""
-    conn_params = get_connection_params()
-    
-    if retrain or not position:
-        # Train team models
-        spread_model = SpreadModel(conn_params)
-        total_model = TotalModel(conn_params)
-        
-        print("Training spread model...")
-        spread_data = spread_model.load_training_data()
-        spread_features = spread_model.prepare_features(spread_data)
-        spread_model.train(spread_features)
-        
-        print("Training total model...")
-        total_data = total_model.load_training_data()
-        total_features = total_model.prepare_features(total_data)
-        total_model.train(total_features)
-    
-    # Train player models by position
-    positions = [position] if position else ['QB', 'RB', 'WR', 'TE']
-    
-    for pos in positions:
-        print(f"Training {pos} fantasy points model...")
-        player_model = PlayerStatModel(conn_params, 'fantasy_points', pos)
-        player_data = player_model.load_training_data()
-        player_features = player_model.prepare_features(player_data)
-        player_model.train(player_features)
-
-if __name__ == "__main__":
-    main()
+Or layer by layer:
+```bash
+dbt run --select 1_staging
+dbt run --select 2_intermediate
+dbt run --select 3_marts
 ```
 
-### 4.2 Monitoring and Cost Optimization (1 hour)
-```sql
--- sql/monitoring_queries.sql
+See `TESTING_GUIDE.md` for validation queries and expected row counts.
 
--- Monitor external table query costs
-SELECT 
-  query_text,
-  execution_time,
-  bytes_scanned,
-  credits_used,
-  start_time
-FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY 
-WHERE query_text LIKE '%ext_%'
-  AND start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
-ORDER BY credits_used DESC;
+### 3. Train models
 
--- Monitor dbt model performance
-SELECT 
-  query_text,
-  execution_time,
-  credits_used
-FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY 
-WHERE query_text LIKE '%dbt%'
-  AND start_time >= DATEADD(day, -1, CURRENT_TIMESTAMP())
-ORDER BY execution_time DESC;
+```bash
+# XGBoost spread model (primary)
+python src/ml/train_spread_model.py
 
--- Check warehouse utilization
-SELECT 
-  warehouse_name,
-  credits_used,
-  SUM(credits_used) OVER (PARTITION BY warehouse_name) AS total_credits
-FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY 
-WHERE start_time >= DATEADD(month, -1, CURRENT_TIMESTAMP());
+# Elo baseline model
+python src/ml/train_elo_model.py
+
+# Full ensemble (requires base models trained first)
+python src/ml/train_ensemble.py
 ```
 
-```python
-# src/utils/cost_monitor.py
-"""Monitor Snowflake costs and performance"""
-import snowflake.connector
-from datetime import datetime, timedelta
+Trained artifacts are serialized to the `models/` directory.
 
-class CostMonitor:
-    def __init__(self, connection_params: dict):
-        self.conn = snowflake.connector.connect(**connection_params)
-    
-    def check_daily_costs(self) -> dict:
-        """Check costs for the last 24 hours"""
-        query = """
-        SELECT 
-          SUM(credits_used) AS total_credits,
-          AVG(execution_time) / 1000 AS avg_execution_time_seconds,
-          COUNT(*) AS total_queries
-        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY 
-        WHERE start_time >= DATEADD(day, -1, CURRENT_TIMESTAMP())
-        """
-        
-        cursor = self.conn.cursor()
-        cursor.execute(query)
-        result = cursor.fetchone()
-        
-        return {
-            'credits_used': result[0] or 0,
-            'avg_execution_time': result[1] or 0,
-            'total_queries': result[2] or 0,
-            'estimated_daily_cost': (result[0] or 0) * 2  # Rough $2 per credit
-        }
-    
-    def optimize_warehouses(self):
-        """Auto-suspend idle warehouses"""
-        cursor = self.conn.cursor()
-        cursor.execute("ALTER WAREHOUSE NFL_ANALYTICS_WH SUSPEND")
-        print("Warehouse suspended to save costs")
+### 4. Generate predictions
+
+```bash
+python src/ml/predict.py --week 15 --season 2025 --output predictions_week15.csv
 ```
 
-## Key Architectural Differences from Original Plan
-
-### **🔄 Data Flow Changes**
-```
-OLD: nfl_data_py → Python Processing → Snowflake Raw → dbt
-NEW: GitHub nflverse → External Tables → dbt Staging → Selective Materialization
+Or run the full pipeline via Dagster:
+```bash
+dagster dev -m dagster_project
 ```
 
-### **💰 Cost Optimization Strategy**
-- **External Tables**: ~$5-10/month (query costs only)
-- **Selective Materialization**: Only complex calculations stored as tables
-- **Views for Simple Logic**: Column renames, filters stay as views
-- **Smart Warehouse Management**: Auto-suspend, right-sizing
+---
 
-### **⚡ Performance Trade-offs**
-- **Slower**: Initial external table queries (2-3x slower than native)
-- **Faster**: Complex feature engineering (materialized tables)
-- **Optimal**: ML model training (marts are native tables)
+## Key Design Decisions
 
-## Updated Timeline & Milestones
+### No Look-Ahead Bias
+All rolling features use point-in-time joins. Window functions use `ROWS BETWEEN N PRECEDING AND 1 PRECEDING` — never including the current game. This is enforced in dbt intermediate models and validated via `mart_model_validation`.
 
-### Week 1 (8 hours)
-- ✅ Complete Phase 1 (Infrastructure + External Tables)
-- ✅ Have external tables connected to nflverse data
-- ✅ Basic dbt project with staging models working
+### Sample Size Constraints
+NFL seasons have ~270 games. With ~20 years of data that is ~5,000 samples. The architecture deliberately avoids deep learning (LSTM, transformers) in favor of shallow models with strong regularization.
 
-### Week 2 (6 hours)  
-- ✅ Complete Phase 2 (dbt transformations)
-- ✅ Feature engineering pipeline with selective materialization
-- ✅ Data quality tests passing on marts
+### Calibration Over Accuracy
+Models are optimized for Brier Score. Well-calibrated probabilities produce higher ROI than raw directional accuracy (Walsh & Joshi, 2024).
 
-### Week 3 (4 hours)
-- ✅ Complete Phases 3-4 (ML + Simple Automation)
-- ✅ First working models generating predictions
-- ✅ Basic refresh scripts running
+### Fractional Kelly Sizing
+All bet sizing uses 0.25x Kelly to reduce variance. A minimum edge threshold of 3–4 points against the Vegas line is required before any bet is recommended.
 
-### Week 4 (2 hours - Optional Enhancement)
-- ⭐ Upgrade to Dagster orchestration if needed
-- ⭐ Advanced monitoring and alerting
-- ⭐ Model performance tuning
+---
 
-## Key SQL Transformations (Examples)
+## Code Quality
 
-### Rolling Player Statistics
-```sql
--- Calculate 5-game rolling averages for player performance
-WITH player_game_stats AS (
-  SELECT 
-    player_id,
-    game_id,
-    game_date,
-    passing_yards,
-    rushing_yards,
-    receiving_yards,
-    fantasy_points
-  FROM {{ ref('stg_player_stats') }}
-),
-
-rolling_stats AS (
-  SELECT 
-    player_id,
-    game_id,
-    AVG(passing_yards) OVER (
-      PARTITION BY player_id 
-      ORDER BY game_date 
-      ROWS BETWEEN 4 PRECEDING AND 1 PRECEDING
-    ) AS passing_yards_5game_avg,
-    
-    AVG(fantasy_points) OVER (
-      PARTITION BY player_id 
-      ORDER BY game_date 
-      ROWS BETWEEN 4 PRECEDING AND 1 PRECEDING  
-    ) AS fantasy_points_5game_avg
-    
-  FROM player_game_stats
-)
-
-SELECT * FROM rolling_stats
+```bash
+# Lint and format with ruff
+ruff check .
+ruff format .
 ```
 
-### Matchup-Based Features
-```sql
--- Team defensive rankings against specific positions
-WITH defensive_rankings AS (
-  SELECT 
-    team,
-    season,
-    RANK() OVER (PARTITION BY season ORDER BY avg_passing_yards_allowed) AS pass_def_rank,
-    RANK() OVER (PARTITION BY season ORDER BY avg_rushing_yards_allowed) AS rush_def_rank,
-    avg_fantasy_points_allowed_to_qb,
-    avg_fantasy_points_allowed_to_rb,
-    avg_fantasy_points_allowed_to_wr
-  FROM {{ ref('int_team_defensive_metrics') }}
-)
+Configuration in `pyproject.toml`: line length 88, Python 3.11 target, isort integrated.
 
-SELECT * FROM defensive_rankings
-```
+---
 
-## Timeline & Milestones
+## License
 
-### Week 1 (8 hours)
-- Complete Phases 1-2 (Infrastructure + Data Ingestion)
-- Have raw nflverse data flowing into Snowflake
-- Basic dbt project structure
-
-### Week 2 (8 hours)  
-- Complete Phase 3 (dbt transformations)
-- Feature engineering pipeline fully built
-- Data quality tests passing
-
-### Week 3 (4 hours)
-- Complete Phases 4-5 (ML + Orchestration)
-- First working models generating predictions
-- Automated pipeline running
-
-## Success Metrics
-- [ ] External tables successfully read nflverse data with <$50/month total costs
-- [ ] Models generate predictions for next week's games
-- [ ] Pipeline processes 5+ years of historical data efficiently via selective materialization
-- [ ] Code is well-documented and AI assistant-friendly
-- [ ] Predictions include confidence intervals/uncertainty estimates
-- [ ] dbt models run in <5 minutes for weekly refresh
-- [ ] External table queries complete in <30 seconds for staging models
-- [ ] ML models achieve >60% directional accuracy on player stats
-- [ ] Team models beat market spread/total predictions by >52% accuracy
-
-## Budget Considerations (Updated for External Tables)
-- **Snowflake External Table Queries**: ~$10-15/month (reading from GitHub)
-- **Materialized Table Storage**: ~$5-10/month (only complex features stored)
-- **Compute for dbt/ML**: ~$15-20/month (X-Small warehouse, auto-suspend)
-- **Python dependencies**: Free (open source stack)
-- **Total Expected**: ~$30-45/month (well under $50 budget)
-- **Development time**: 20 hours target
-
-## Cost Monitoring Commands
-```sql
--- Weekly cost check (run this every Tuesday)
-SELECT 
-  DATE_TRUNC('week', start_time) AS week,
-  SUM(credits_used) AS total_credits,
-  SUM(credits_used) * 2 AS estimated_cost_usd
-FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY 
-WHERE start_time >= DATEADD(week, -4, CURRENT_TIMESTAMP())
-GROUP BY week
-ORDER BY week DESC;
-
--- External table usage specifically
-SELECT 
-  DATE(start_time) AS query_date,
-  COUNT(*) AS external_table_queries,
-  SUM(credits_used) AS external_table_credits
-FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY 
-WHERE query_text ILIKE '%ext_%'
-  AND start_time >= DATEADD(week, -1, CURRENT_TIMESTAMP())
-GROUP BY query_date
-ORDER BY query_date DESC;
-```
-
-## Getting Started - Updated First Steps
-1. **✅ Repository Setup**: uv, ruff, .gitignore configured
-2. **🎯 Snowflake Trial**: Create account and run external table setup
-3. **🔗 Find nflverse URLs**: Research GitHub release URLs for parquet files
-4. **📊 Test External Tables**: Verify connectivity and basic queries
-5. **🏗️ dbt Foundation**: Initialize project and create first staging model
-6. **🤖 First ML Model**: Simple player stat prediction from marts
-
-## External Table URL Research Template
-```sql
--- Template for external table creation (URLs need to be researched)
--- Check https://github.com/nflverse/nflverse-data/releases for actual URLs
-
-CREATE EXTERNAL TABLE ext_play_by_play(
-    -- Column definitions from earlier artifact
-) 
-LOCATION = 'https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_YYYY.parquet'
-FILE_FORMAT = parquet_format
-AUTO_REFRESH = TRUE;
-
--- Pattern likely to be:
--- pbp: 'https://github.com/nflverse/nflverse-data/releases/download/pbp/'
--- player_stats: 'https://github.com/nflverse/nflverse-data/releases/download/player_stats/'  
--- schedules: 'https://github.com/nflverse/nflverse-data/releases/download/schedules/'
--- rosters: 'https://github.com/nflverse/nflverse-data/releases/download/rosters/'
-```
-
-## Fallback Strategy
-If external tables become too expensive or slow:
-
-1. **Hybrid Approach**: External for historical, native for current season
-2. **Selective Ingestion**: Use Python loader for just recent data (current season only)
-3. **Materialization Strategy**: Increase what's stored as native tables vs. views
-4. **Warehouse Scaling**: Move to larger warehouse if query performance is too slow
-
-This plan balances your requirements for SQL-first processing, modern Python tooling, external table efficiency, and cost-effectiveness while building toward production-ready ML predictions with next week's games as the target output.# NFL Prediction System - Project Plan
+MIT
