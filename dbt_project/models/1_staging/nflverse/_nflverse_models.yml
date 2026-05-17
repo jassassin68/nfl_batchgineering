@@ -17,12 +17,12 @@ models:
         tests:
           - not_null
       - name: game_type
-        description: "Type of game (REG, POST, PRE)"
+        description: "Type of game (REG regular season; WC/DIV/CON/SB postseason rounds)"
         data_type: varchar
         tests:
           - not_null
           - accepted_values:
-              values: ['REG', 'POST', 'PRE']
+              values: ['REG', 'POST', 'PRE', 'WC', 'DIV', 'CON', 'SB']
       - name: team
         description: "Team abbreviation (3-letter code)"
         data_type: varchar
@@ -73,10 +73,12 @@ models:
         description: "Last modified timestamp of the injury report"
         data_type: varchar
     tests:
+      # warn-only: the upstream nflverse injuries feed occasionally emits exact
+      # duplicate report rows; injuries is not consumed downstream.
       - unique:
           column_name: "season || '-' || game_type || '-' || team || '-' || week || '-' || gsis_id"
           config:
-            severity: error
+            severity: warn
 
   - name: stgnv_player_summary_stats
     description: >
@@ -100,12 +102,12 @@ models:
         tests:
           - not_null
       - name: season_type
-        description: "Season type (REG, POST, PRE)"
+        description: "Season type (REG, POST, PRE, or REG+POST for combined aggregates)"
         data_type: varchar
         tests:
           - not_null
           - accepted_values:
-              values: ['REG', 'POST', 'PRE']
+              values: ['REG', 'POST', 'PRE', 'REG+POST']
       - name: player_name
         description: "Player name"
         data_type: varchar
@@ -324,55 +326,45 @@ models:
   - name: stgnv_play_by_play_participation
     description: >
       Player participation data for each play, indicating which players were on the
-      field for offense, defense, or special teams. Essential for calculating snap
-      counts, usage rates, and player involvement metrics. Critical for advanced
-      player analysis and roster construction.
+      field for offense and defense, plus formation and personnel context. One row
+      per play. Player lists are stored as delimited strings in offense_players /
+      defense_players (this table is play-grain, not player-grain).
     meta:
       owner: "data-engineering"
       layer: "staging"
-      data_grain: "one row per player per play"
+      data_grain: "one row per play"
     columns:
-      - name: play_id
-        description: "Unique identifier for each play (links to play_by_play)"
-        data_type: varchar
-        tests:
-          - not_null
-      - name: game_id
+      - name: nflverse_game_id
         description: "Unique identifier for each game"
         data_type: varchar
         tests:
           - not_null
-      - name: season
-        description: "NFL season year"
+      - name: play_id
+        description: "Unique identifier for each play within a game (links to play_by_play)"
         data_type: varchar
         tests:
           - not_null
-      - name: week
-        description: "Week number within the season"
+      - name: possession_team
+        description: "Team with possession on the play"
         data_type: varchar
-        tests:
-          - not_null
-      - name: player_id
-        description: "Unique player identifier"
+      - name: offense_formation
+        description: "Offensive formation"
         data_type: varchar
-        tests:
-          - not_null
-      - name: player_name
-        description: "Player name"
+      - name: offense_personnel
+        description: "Offensive personnel grouping"
         data_type: varchar
-        tests:
-          - not_null
-      - name: position
-        description: "Player position"
+      - name: defense_personnel
+        description: "Defensive personnel grouping"
         data_type: varchar
-      - name: team
-        description: "Player's team abbreviation"
+      - name: offense_players
+        description: "Delimited list of offensive player IDs on the field"
         data_type: varchar
-        tests:
-          - not_null
+      - name: defense_players
+        description: "Delimited list of defensive player IDs on the field"
+        data_type: varchar
     tests:
       - unique:
-          column_name: "play_id || '-' || player_id"
+          column_name: "nflverse_game_id || '-' || play_id"
           config:
             severity: error
 
@@ -425,7 +417,11 @@ models:
         description: "NFL Game Statistics & Information System player ID - primary identifier"
         data_type: varchar
         tests:
-          - not_null
+          # warn-only: recently-signed practice-squad / DEV-status players occasionally
+          # lack an assigned gsis_id in the upstream nflverse roster feed.
+          - not_null:
+              config:
+                severity: warn
       - name: height
         description: "Player height"
         data_type: varchar
@@ -489,12 +485,12 @@ models:
         tests:
           - not_null
       - name: season_type
-        description: "Season type (REG, POST, PRE)"
+        description: "Season type (REG, POST, PRE, or REG+POST for combined aggregates)"
         data_type: varchar
         tests:
           - not_null
           - accepted_values:
-              values: ['REG', 'POST', 'PRE']
+              values: ['REG', 'POST', 'PRE', 'REG+POST']
       - name: games
         description: "Number of games played"
         data_type: varchar
