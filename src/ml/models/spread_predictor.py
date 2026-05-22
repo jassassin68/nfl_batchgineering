@@ -129,7 +129,7 @@ class SpreadPredictor:
         }
 
         if verbose:
-            print(f"\n✅ Model trained successfully!")
+            print(f"\n[OK] Model trained successfully!")
             print(f"   Training samples: {self.metadata['n_train_samples']:,}")
             print(f"   Validation samples: {self.metadata['n_val_samples']:,}")
             print(f"   Features: {self.metadata['n_features']}")
@@ -249,7 +249,7 @@ class SpreadPredictor:
         with open(features_path, 'w') as f:
             json.dump(self.feature_names, f, indent=2)
 
-        print(f"\n✅ Model saved successfully!")
+        print(f"\n[OK] Model saved successfully!")
         print(f"   Model: {model_path}")
         print(f"   Metadata: {metadata_path}")
         print(f"   Features: {features_path}")
@@ -286,7 +286,7 @@ class SpreadPredictor:
             with open(features_path, 'r') as f:
                 self.feature_names = json.load(f)
 
-        print(f"✅ Model loaded from {model_path}")
+        print(f"[OK] Model loaded from {model_path}")
         print(f"   Trained: {self.metadata.get('train_date', 'Unknown')}")
         print(f"   Features: {len(self.feature_names)}")
 
@@ -294,7 +294,7 @@ class SpreadPredictor:
         """Print model summary information."""
 
         if self.model is None:
-            print("⚠️  No model loaded or trained")
+            print("[WARN] No model loaded or trained")
             return
 
         print("\n" + "="*60)

@@ -125,6 +125,119 @@ def load_upcoming_games(week: int, season: int) -> pl.DataFrame:
     return df
 
 
+def load_historical_games(week: int, season: int) -> pl.DataFrame:
+    """Load a completed historical week from mart_game_prediction_features.
+
+    Used by TEST mode to replay a known week when no upcoming games exist
+    (e.g. the offseason). Includes home_score/away_score so predictions can be
+    scored against actual results.
+
+    Args:
+        week: NFL week number.
+        season: NFL season year.
+
+    Returns:
+        Polars DataFrame of historical games with the full feature set.
+    """
+    from src.pipeline.snowflake import marts_table, query_df
+
+    table = marts_table("mart_game_prediction_features")
+    print(f"Loading historical games for Week {week}, Season {season} from {table}...")
+    df = query_df(
+        f"select * from {table} "
+        f"where season = {season} and week = {week} "
+        f"order by gameday, gametime"
+    )
+    print(f"Loaded {len(df)} historical games")
+    return df
+
+
+def compare_to_actuals(results: pl.DataFrame, games_df: pl.DataFrame) -> pl.DataFrame:
+    """Score TEST-mode predictions against actual game results.
+
+    Adds actual_spread, model_error and ats_hit columns. ats_hit is True when
+    the model picked the correct side of the Vegas line -- the sign of
+    (predicted - Vegas) matches the sign of (actual - Vegas). Games that landed
+    exactly on the line, or that have no Vegas line, are treated as pushes
+    (ats_hit = null).
+
+    Args:
+        results: prediction output from generate_predictions().
+        games_df: the historical games, carrying home_score/away_score.
+
+    Returns:
+        results with actual_spread, model_error and ats_hit columns added.
+    """
+    scores = games_df.select(["game_id", "home_score", "away_score"])
+    merged = results.join(scores, on="game_id", how="left")
+
+    merged = merged.with_columns(
+        (pl.col("home_score") - pl.col("away_score")).alias("actual_spread")
+    )
+    merged = merged.with_columns(
+        (pl.col("predicted_spread") - pl.col("actual_spread")).alias("model_error")
+    )
+
+    if "vegas_spread" in merged.columns:
+        model_side = (pl.col("predicted_spread") - pl.col("vegas_spread")).sign()
+        actual_side = (pl.col("actual_spread") - pl.col("vegas_spread")).sign()
+        merged = merged.with_columns(
+            pl.when(pl.col("vegas_spread").is_null() | (actual_side == 0))
+            .then(None)
+            .otherwise(model_side == actual_side)
+            .alias("ats_hit")
+        )
+
+    return merged
+
+
+def summarize_test_results(merged: pl.DataFrame) -> Dict:
+    """Print and return accuracy metrics for a TEST-mode run.
+
+    Args:
+        merged: output of compare_to_actuals().
+
+    Returns:
+        Dict with game count, MAE, and ATS accuracy.
+    """
+    n_games = len(merged)
+    mae = (
+        merged.select(pl.col("model_error").abs().mean()).item()
+        if n_games
+        else 0.0
+    )
+
+    ats_acc = None
+    ats_graded = 0
+    ats_hits = 0
+    if "ats_hit" in merged.columns:
+        graded = merged.filter(pl.col("ats_hit").is_not_null())
+        ats_graded = len(graded)
+        if ats_graded:
+            ats_hits = int(graded.select(pl.col("ats_hit").sum()).item() or 0)
+            ats_acc = ats_hits / ats_graded
+
+    print("\n" + "=" * 60)
+    print("TEST MODE -- PREDICTED VS ACTUAL")
+    print("=" * 60)
+    print(f"Games scored:      {n_games}")
+    print(f"Spread MAE:        {mae:.2f} points")
+    if ats_acc is not None:
+        print(f"ATS accuracy:      {ats_hits}/{ats_graded} = {ats_acc:.1%} "
+              f"(break-even 52.4%)")
+    else:
+        print("ATS accuracy:      n/a (no gradeable games)")
+    print("=" * 60)
+
+    return {
+        "games_scored": n_games,
+        "spread_mae": mae,
+        "ats_graded": ats_graded,
+        "ats_hits": ats_hits,
+        "ats_accuracy": ats_acc,
+    }
+
+
 def load_vegas_lines(vegas_file: Optional[str] = None) -> Optional[pl.DataFrame]:
     """Load Vegas lines from CSV file if provided."""
     if not vegas_file:
@@ -210,6 +323,18 @@ def load_ensemble_model(model_dir: str) -> Dict:
                     models[name].is_fitted = True  # Mark as fitted since loaded from disk
                     models['ensemble'].add_base_model(name, models[name])
                 print(f"Ensemble ready with models: {required_models}")
+
+    # Fail loudly if no spread-capable model loaded. The XGBoost model is the
+    # ensemble's primary base model and the fallback when no meta-learner is
+    # present; without it generate_predictions cannot produce predicted_spread
+    # and would otherwise write null predictions to Snowflake silently.
+    if 'xgboost' not in models:
+        raise RuntimeError(
+            f"No XGBoost model found under '{model_dir}'. Expected "
+            f"'{model_dir / 'xgboost' / 'spread_predictor.json'}'. "
+            f"Loaded only: {sorted(models.keys()) or 'nothing'}. "
+            "Train models before predicting (see src/ml/WEEKLY_WORKFLOW.md)."
+        )
 
     return models
 
@@ -313,6 +438,14 @@ def generate_predictions(
     elif 'xgboost' in models:
         # Fallback to XGBoost if no ensemble
         predictions['predicted_spread'] = predictions['xgboost_spread']
+
+    # Refuse to emit results without a spread prediction rather than writing
+    # null spreads/edges/recommendations that look like a successful run.
+    if 'predicted_spread' not in predictions:
+        raise RuntimeError(
+            "No model produced a spread prediction (need the XGBoost model or a "
+            "complete stacking ensemble). Refusing to write null predictions."
+        )
 
     # Build results DataFrame
     results = games_df.select([
@@ -450,6 +583,10 @@ Examples:
                         help='Week number to predict')
     parser.add_argument('--season', type=int, required=True,
                         help='Season year')
+    parser.add_argument('--mode', type=str, default='prod',
+                        choices=['prod', 'test'],
+                        help='prod = upcoming games; test = replay a completed '
+                             'historical week and score vs actual results')
     parser.add_argument('--output', type=str, default='predictions.csv',
                         help='Output CSV file path (default: predictions.csv)')
     parser.add_argument('--model-dir', type=str, default='src/ml/models/ensemble',
@@ -464,14 +601,35 @@ Examples:
     print("=" * 60)
     print("NFL SPREAD PREDICTION")
     print("=" * 60)
+    print(f"Mode: {args.mode.upper()}")
     print(f"Week: {args.week}")
     print(f"Season: {args.season}")
     print(f"Output: {args.output}")
     print(f"Model Directory: {args.model_dir}")
     print("=" * 60)
 
-    # Load upcoming games
-    games_df = load_upcoming_games(args.week, args.season)
+    test_mode = args.mode == 'test'
+
+    # Load games. TEST mode replays a completed historical week (and runs
+    # preflight validation first); PROD mode loads upcoming games.
+    if test_mode:
+        from src.pipeline.config import PipelineMode, PipelineRunConfig
+        from src.pipeline.preflight import PreflightError, run_preflight
+
+        try:
+            plan = run_preflight(
+                PipelineRunConfig(
+                    mode=PipelineMode.TEST, week=args.week, season=args.season
+                )
+            )
+        except PreflightError as exc:
+            print(f"\nPreflight validation FAILED:\n{exc}")
+            return 1
+        print("\n" + plan.render())
+        games_df = load_historical_games(args.week, args.season)
+    else:
+        games_df = load_upcoming_games(args.week, args.season)
+
     if games_df.is_empty():
         print("No games to predict. Exiting.")
         return 1
@@ -495,14 +653,25 @@ Examples:
         print("No predictions generated. Exiting.")
         return 1
 
-    # Write to CSV
+    # TEST mode: score predictions against actual historical results.
+    if test_mode:
+        results = compare_to_actuals(results, games_df)
+        summarize_test_results(results)
+
+    # Write to CSV (ensure the output directory exists)
     print(f"\nWriting {len(results)} predictions to {args.output}...")
-    results.write_csv(args.output)
+    output_path = Path(args.output)
+    if output_path.parent and not output_path.parent.exists():
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    results.write_csv(str(output_path))
     print(f"Predictions saved to: {args.output}")
 
-    # Write to Snowflake if requested
-    if args.snowflake:
+    # Write to Snowflake if requested. PROD only -- test runs never touch the
+    # production ML.PREDICTIONS table.
+    if args.snowflake and not test_mode:
         write_to_snowflake(results, args.week, args.season)
+    elif args.snowflake and test_mode:
+        print("Skipping Snowflake write: --snowflake is ignored in test mode.")
 
     # Print summary
     print("\n" + "=" * 60)

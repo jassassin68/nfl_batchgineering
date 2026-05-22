@@ -1,0 +1,52 @@
+{
+  "training_date": "2026-01-22T18:19:04.690308",
+  "min_season": 2014,
+  "test_season": 2025,
+  "train_games": 2476,
+  "test_games": 235,
+  "models_trained": [
+    "elo",
+    "xgboost",
+    "neural",
+    "ensemble"
+  ],
+  "results": {
+    "elo": {
+      "mae": 12.809348249525094,
+      "rmse": 15.71350759434236,
+      "ats_accuracy": 0.425531914893617,
+      "brier_score": 0.3047134245208194,
+      "roi": -0.21173762945914845,
+      "bets_placed": 158
+    },
+    "xgboost": {
+      "mae": 10.44743715286889,
+      "rmse": 13.511883244846661,
+      "ats_accuracy": 0.548936170212766,
+      "brier_score": 0.22209441340526093,
+      "roi": 0.10201249132546851,
+      "bets_placed": 131
+    },
+    "neural": {
+      "mae": 10.656937102180846,
+      "rmse": 13.666565080645277,
+      "ats_accuracy": 0.5234042553191489,
+      "brier_score": 0.2276197298932855,
+      "roi": 0.0958041958041959,
+      "bets_placed": 130
+    },
+    "ensemble": {
+      "mae": 10.920545400040785,
+      "rmse": 14.225423047585272,
+      "ats_accuracy": 0.5319148936170213,
+      "brier_score": 0.2383313953591528,
+      "roi": 0.06572481572481577,
+      "bets_placed": 148
+    }
+  },
+  "ensemble_weights": {
+    "elo": 0.0561086505297996,
+    "xgboost": 0.6945771566780192,
+    "neural": 0.24931419279218112
+  }
+}

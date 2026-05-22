@@ -122,4 +122,6 @@ final as (
   where player_id is not null
 )
 
+-- exclude rows lacking a player identity (unusable upstream noise)
 select * from final
+where player_id is not null
