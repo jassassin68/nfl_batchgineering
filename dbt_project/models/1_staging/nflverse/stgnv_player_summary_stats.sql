@@ -119,6 +119,7 @@ final as (
     "load_type" as load_type,
     "loaded_at" as loaded_at
   from {{ source('nfl_verse_raw', 'player_summary_stats') }}
+  where player_id is not null
 )
 
 select * from final

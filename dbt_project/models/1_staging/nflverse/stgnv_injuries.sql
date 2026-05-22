@@ -1,3 +1,6 @@
+-- disable while this source data is not getting refreshed or used
+{{ config(enabled = false) }}
+
 with
 
 final as (
