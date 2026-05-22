@@ -121,4 +121,6 @@ final as (
   from {{ source('nfl_verse_raw', 'player_summary_stats') }}
 )
 
+-- exclude rows lacking a player identity (unusable upstream noise)
 select * from final
+where player_id is not null

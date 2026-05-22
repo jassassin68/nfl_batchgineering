@@ -98,6 +98,14 @@ models/*.pt
 models/*.onnx
 *.model
 
+# Trained ensemble artifacts ARE version-controlled (scoped exception to the
+# blanket *.json / *.pkl ignores above) so weekly predictions are reproducible
+# and the deployed model travels with the repo. Scoped to src/ml/models/ only —
+# the blanket rules still protect secrets.json, data dumps, etc. elsewhere.
+!src/ml/models/**/*.json
+!src/ml/models/**/*.pkl
+!src/ml/models/**/*.pt
+
 # Jupyter Notebooks
 .ipynb_checkpoints/
 *.ipynb

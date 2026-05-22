@@ -13,8 +13,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.ml.predict import (
     load_upcoming_games,
+    load_historical_games,
     load_ensemble_model,
     generate_predictions,
+    compare_to_actuals,
+    summarize_test_results,
     write_to_snowflake,
 )
 
@@ -95,5 +98,69 @@ def weekly_predictions(context, config: PredictionConfig) -> MaterializeResult:
             "csv_path": MetadataValue.path(str(csv_path)),
             "week": MetadataValue.int(week),
             "season": MetadataValue.int(season),
+        }
+    )
+
+
+@asset(
+    group_name="test_predictions",
+    compute_kind="python",
+)
+def test_predictions(context, pipeline_preflight: dict) -> MaterializeResult:
+    """Replay a validated historical week through the model and score it.
+
+    Consumes the execution plan from pipeline_preflight, loads the historical
+    week from mart_game_prediction_features, runs the ensemble, and reports
+    predicted-vs-actual accuracy (spread MAE, ATS hit rate). Writes a CSV to
+    the data directory and never touches the production ML.PREDICTIONS table.
+    """
+    week = pipeline_preflight["week"]
+    season = pipeline_preflight["season"]
+    context.log.info(f"Test prediction run: season {season}, week {week}")
+
+    if "predict" not in pipeline_preflight.get("steps_to_run", []):
+        raise RuntimeError(
+            "Preflight plan does not include the 'predict' step; aborting."
+        )
+
+    # 1. Load the historical week (includes actual scores for grading)
+    games_df = load_historical_games(week, season)
+    if games_df.is_empty():
+        raise RuntimeError(
+            f"No historical games for season {season}, week {week}"
+        )
+    context.log.info(f"Loaded {len(games_df)} historical games")
+
+    # 2. Load trained models
+    models = load_ensemble_model(str(MODEL_DIR))
+    context.log.info(f"Loaded models: {list(models.keys())}")
+
+    # 3. Generate predictions and score them against actual results
+    results = generate_predictions(games_df, models)
+    if results.is_empty():
+        raise RuntimeError("Prediction generation returned empty results")
+    results = compare_to_actuals(results, games_df)
+    summary = summarize_test_results(results)
+
+    # 4. Write CSV output (no Snowflake write in test mode)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    csv_path = DATA_DIR / f"test_predictions_{season}_wk{week}.csv"
+    results.write_csv(str(csv_path))
+    context.log.info(f"Wrote test predictions to {csv_path}")
+
+    ats_accuracy = summary["ats_accuracy"]
+    return MaterializeResult(
+        metadata={
+            "mode": MetadataValue.text("TEST"),
+            "season": MetadataValue.int(season),
+            "week": MetadataValue.int(week),
+            "games_scored": MetadataValue.int(summary["games_scored"]),
+            "spread_mae": MetadataValue.float(round(summary["spread_mae"], 3)),
+            "ats_accuracy": (
+                MetadataValue.float(round(ats_accuracy, 4))
+                if ats_accuracy is not None
+                else MetadataValue.text("n/a")
+            ),
+            "csv_path": MetadataValue.path(str(csv_path)),
         }
     )
