@@ -124,6 +124,7 @@ temp/
 *.tmp
 *.temp
 .temp
+.tmp_*
 
 # Cache directories
 .cache/
