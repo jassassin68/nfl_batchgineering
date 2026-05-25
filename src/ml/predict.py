@@ -474,9 +474,9 @@ def generate_predictions(
         recommendations = []
         for e in edge:
             if e >= 3.0:
-                recommendations.append('BET AWAY')
-            elif e <= -3.0:
                 recommendations.append('BET HOME')
+            elif e <= -3.0:
+                recommendations.append('BET AWAY')
             else:
                 recommendations.append('NO BET')
 

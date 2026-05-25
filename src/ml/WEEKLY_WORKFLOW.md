@@ -103,7 +103,7 @@ ORDER BY ABS(edge) DESC;
 | `gameday` | Date of the game |
 | `home_team` | Home team abbreviation |
 | `away_team` | Away team abbreviation |
-| `vegas_spread` | Current Vegas line (negative = home favored) |
+| `vegas_spread` | Current Vegas line (positive = home favored, nflverse convention) |
 | `predicted_spread` | Model's predicted spread |
 | `edge` | Model spread - Vegas spread (positive = model likes home more) |
 | `home_win_prob` | Model's probability home team wins |

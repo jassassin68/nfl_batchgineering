@@ -359,7 +359,8 @@ from src.ml.utils import evaluate_spread_model, create_performance_report
 
 # Quick evaluation
 metrics = evaluate_spread_model(y_true, y_pred, verbose=True)
-# Returns: mae, rmse, r2, directional_accuracy, ats_accuracy, roi
+# Returns: mae, rmse, r_squared, directional_accuracy, within_3pt_rate (proximity metric;
+# for real ATS vs Vegas, use validation.calculate_ats_accuracy)
 
 # Full report with visualizations
 report_path = create_performance_report(
