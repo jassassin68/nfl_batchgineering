@@ -379,6 +379,6 @@ def create_performance_report(
             save_path=f"{output_dir}/feature_importance.png"
         )
 
-    print(f"\n✅ Performance report generated in {output_dir}/")
+    print(f"\n[OK] Performance report generated in {output_dir}/")
 
     return f"{output_dir}/predictions_vs_actual.png"
