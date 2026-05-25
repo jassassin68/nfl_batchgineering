@@ -123,7 +123,7 @@ def load_data_from_snowflake(
     cursor.close()
     conn.close()
 
-    print(f"✅ Loaded {len(rows):,} rows with {len(columns)} columns")
+    print(f"[OK] Loaded {len(rows):,} rows with {len(columns)} columns")
 
     # Convert to Polars DataFrame
     df = pl.DataFrame(rows, schema=columns, orient='row')
@@ -386,12 +386,12 @@ def main(args):
     print("\n" + "="*80)
     print("TRAINING COMPLETE!")
     print("="*80)
-    print(f"\n✅ Model successfully trained and saved!")
-    print(f"\n📊 Key Results:")
+    print(f"\n[OK] Model successfully trained and saved!")
+    print(f"\n[RESULTS] Key Results:")
     print(f"  MAE: {metrics['mae']:.2f} points")
     print(f"  Directional Accuracy: {metrics['directional_accuracy']:.1%}")
     print(f"  Within 3pt of actual: {metrics['within_3pt_rate']:.1%}")
-    print(f"\n📁 Artifacts saved to: {args.output_dir}/")
+    print(f"\n[FILES] Artifacts saved to: {args.output_dir}/")
     print(f"  - Model: {model_name}.json")
     print(f"  - Metadata: {model_name}_metadata.json")
     print(f"  - Features: {model_name}_features.json")
@@ -434,7 +434,7 @@ if __name__ == "__main__":
     try:
         main(args)
     except Exception as e:
-        print(f"\n❌ Error during training: {e}")
+        print(f"\n[ERROR] Error during training: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

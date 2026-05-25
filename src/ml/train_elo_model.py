@@ -281,7 +281,7 @@ def main(args):
             # Show a few examples for verification
             print("\n  Sample ATS predictions:")
             for i in range(min(3, len(correct))):
-                status = "✓" if correct[i] else "✗"
+                status = "[OK]" if correct[i] else "[X]"
                 print(f"    {status} Vegas: {vegas_spread[valid_mask][i]:+.1f}, "
                       f"Elo: {y_pred[valid_mask][i]:+.1f}, "
                       f"Actual: {y_true[valid_mask][i]:+.1f}")
@@ -415,10 +415,10 @@ if __name__ == '__main__':
     # Run training
     try:
         metrics = main(args)
-        print("\n✓ Training completed successfully")
+        print("\n[OK] Training completed successfully")
         sys.exit(0)
     except Exception as e:
-        print(f"\n✗ Training failed: {e}")
+        print(f"\n[X] Training failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

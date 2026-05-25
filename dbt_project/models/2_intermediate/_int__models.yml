@@ -154,6 +154,10 @@ models:
 
       - name: rolling_4wk_epa_per_play
         description: "Rolling 4-week average of EPA per play - key predictive feature"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
 
       - name: rolling_4wk_success_rate
         description: "Rolling 4-week average of success rate - key predictive feature"
@@ -234,6 +238,10 @@ models:
 
       - name: rolling_4wk_epa_allowed
         description: "Rolling 4-week average of EPA allowed - key predictive feature"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
 
       - name: rolling_4wk_success_rate_allowed
         description: "Rolling 4-week average of success rate allowed"

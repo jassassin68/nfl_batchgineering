@@ -153,6 +153,10 @@ models:
         description: "Week number within the season"
         tests:
           - not_null
+          # Model filters to week >= 2; 22 covers regular season + playoffs.
+          - dbt_utils.accepted_range:
+              min_value: 2
+              max_value: 22
 
       - name: home_team
         description: "Home team abbreviation"
@@ -172,9 +176,17 @@ models:
 
       - name: temp
         description: "Temperature in Fahrenheit (72 for domes)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -20
+              max_value: 120
 
       - name: wind
         description: "Wind speed in MPH (0 for domes)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 60
 
       - name: roof
         description: "Roof type (dome, closed, outdoors, open)"
@@ -196,12 +208,49 @@ models:
           - accepted_values:
               values: [0, 1]
 
+      # Vegas betting lines
+      - name: vegas_spread
+        description: "Vegas point spread (positive = home favored)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -30
+              max_value: 30
+
+      - name: vegas_total
+        description: "Vegas over/under total points"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 20
+              max_value: 80
+
+      - name: vegas_home_win_prob
+        description: "Implied home win probability derived from the Vegas spread"
+        tests:
+          # A probability must lie in [0, 1]. This currently WARNS rather than
+          # errors: int_game_vegas_lines.sql derives this with an unbounded
+          # linear formula (0.50 + ABS(spread)*0.033), so spreads beyond ~15
+          # points yield values above 1.0. Promote to error severity once that
+          # formula is bounded (e.g. a logistic mapping).
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+              config:
+                severity: warn
+
       # Home Team Features
       - name: home_epa_adj
         description: "Home team adjusted EPA per play"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
 
       - name: home_epa_l4w
         description: "Home team rolling 4-week EPA per play"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
 
       - name: home_success_rate
         description: "Home team success rate"
@@ -211,6 +260,10 @@ models:
 
       - name: home_def_epa
         description: "Home team defensive EPA allowed (lower is better)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
 
       - name: home_def_rank
         description: "Home team defensive ranking (1 = best)"
@@ -224,9 +277,17 @@ models:
       # Away Team Features
       - name: away_epa_adj
         description: "Away team adjusted EPA per play"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
 
       - name: away_epa_l4w
         description: "Away team rolling 4-week EPA per play"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
 
       - name: away_success_rate
         description: "Away team success rate"
@@ -236,6 +297,10 @@ models:
 
       - name: away_def_epa
         description: "Away team defensive EPA allowed (lower is better)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
 
       - name: away_def_rank
         description: "Away team defensive ranking (1 = best)"
