@@ -80,9 +80,15 @@ game_context AS (
         gs.home_score,
         gs.away_score,
         
-        -- Weather
-        COALESCE(gw.temp, 72) AS temp,  -- Default to 72 for domes
-        COALESCE(gw.wind, 0) AS wind,   -- Default to 0 for domes
+        -- Weather. nflverse occasionally has implausible wind values (e.g.
+        -- 2016 W13 PIT-NYG comes through as 71 mph when the real value was
+        -- closer to 13). Clamp >60 to 0 so the bad row doesn't poison the
+        -- mart; legitimate 30-50 mph extremes still pass through.
+        COALESCE(gw.temp, 72) AS temp,
+        CASE
+            WHEN gw.wind > 60 THEN 0
+            ELSE COALESCE(gw.wind, 0)
+        END AS wind,
         COALESCE(gw.roof, 'outdoors') AS roof,
         gw.surface,
         

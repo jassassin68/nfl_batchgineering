@@ -224,18 +224,11 @@ models:
               max_value: 80
 
       - name: vegas_home_win_prob
-        description: "Implied home win probability derived from the Vegas spread"
+        description: "Implied home win probability derived from the Vegas spread (logistic mapping, bounded to (0, 1))"
         tests:
-          # A probability must lie in [0, 1]. This currently WARNS rather than
-          # errors: int_game_vegas_lines.sql derives this with an unbounded
-          # linear formula (0.50 + ABS(spread)*0.033), so spreads beyond ~15
-          # points yield values above 1.0. Promote to error severity once that
-          # formula is bounded (e.g. a logistic mapping).
           - dbt_utils.accepted_range:
               min_value: 0
               max_value: 1
-              config:
-                severity: warn
 
       # Home Team Features
       - name: home_epa_adj
