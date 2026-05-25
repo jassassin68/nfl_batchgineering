@@ -1,6 +1,8 @@
 """
 Model evaluation utilities for NFL prediction models.
-Provides metrics for regression (MAE, RMSE) and betting performance (ROI, directional accuracy).
+Provides regression metrics (MAE, RMSE) and directional/proximity metrics for spread
+predictions. For real ATS / ROI evaluation against Vegas lines, see validation.py
+(calculate_ats_accuracy, calculate_roi) — those require vegas_spread input.
 """
 
 import numpy as np
@@ -49,20 +51,10 @@ def evaluate_spread_model(
     correct_direction = (np.sign(y_true) == np.sign(y_pred))
     directional_accuracy = np.mean(correct_direction)
 
-    # Betting performance (assuming -110 odds)
-    # A bet "wins" if the prediction is within 3 points of the actual spread
-    # This is a conservative estimate - in reality, you'd compare to the Vegas line
-    spread_margin = 3.0
-    correct_beats_spread = np.abs(residuals) < spread_margin
-
-    # ROI calculation: win = +0.91 units (bet $1.10 to win $1), loss = -1 unit
-    wins = np.sum(correct_beats_spread)
-    losses = len(correct_beats_spread) - wins
-    total_return = (wins * 0.91) - losses
-    roi = total_return / len(correct_beats_spread)
-
-    # Against the spread (ATS) accuracy
-    ats_accuracy = np.mean(correct_beats_spread)
+    # Fraction of predictions whose magnitude is within 3 points of the actual
+    # margin. This is NOT against-the-spread accuracy (which requires vegas_spread
+    # — see validation.calculate_ats_accuracy); it is a proximity / sharpness metric.
+    within_3pt_rate = float(np.mean(np.abs(residuals) < 3.0))
 
     # R-squared
     ss_res = np.sum(residuals ** 2)
@@ -76,10 +68,7 @@ def evaluate_spread_model(
         'mean_residual': mean_residual,
         'std_residual': std_residual,
         'directional_accuracy': directional_accuracy,
-        'ats_accuracy': ats_accuracy,
-        'betting_roi': roi,
-        'wins': int(wins),
-        'losses': int(losses),
+        'within_3pt_rate': within_3pt_rate,
         'n_samples': len(y_true)
     }
 
@@ -96,11 +85,7 @@ def evaluate_spread_model(
         print(f"  Std Residual:           {metrics['std_residual']:.2f} points")
         print(f"\nPrediction Accuracy:")
         print(f"  Directional Accuracy:   {metrics['directional_accuracy']:.1%}")
-        print(f"  ATS Accuracy (±3pts):   {metrics['ats_accuracy']:.1%}")
-        print(f"\nBetting Performance (Hypothetical):")
-        print(f"  Wins:                   {metrics['wins']}")
-        print(f"  Losses:                 {metrics['losses']}")
-        print(f"  ROI:                    {metrics['betting_roi']:.2%}")
+        print(f"  Within 3pt of actual:   {metrics['within_3pt_rate']:.1%}")
         print("="*60 + "\n")
 
     return metrics
@@ -157,7 +142,7 @@ def evaluate_by_confidence(
         print(f"  Games: {results['high_confidence']['n_samples']}")
         print(f"  MAE: {results['high_confidence']['mae']:.2f}")
         print(f"  Directional Accuracy: {results['high_confidence']['directional_accuracy']:.1%}")
-        print(f"  ROI: {results['high_confidence']['betting_roi']:.2%}")
+        print(f"  Within 3pt of actual: {results['high_confidence']['within_3pt_rate']:.1%}")
     else:
         print("  No high confidence predictions")
 
@@ -166,7 +151,7 @@ def evaluate_by_confidence(
         print(f"  Games: {results['low_confidence']['n_samples']}")
         print(f"  MAE: {results['low_confidence']['mae']:.2f}")
         print(f"  Directional Accuracy: {results['low_confidence']['directional_accuracy']:.1%}")
-        print(f"  ROI: {results['low_confidence']['betting_roi']:.2%}")
+        print(f"  Within 3pt of actual: {results['low_confidence']['within_3pt_rate']:.1%}")
     else:
         print("  No low confidence predictions")
     print("="*60 + "\n")

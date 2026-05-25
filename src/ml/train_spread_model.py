@@ -367,8 +367,7 @@ def main(args):
         f.write(f"  RMSE: {metrics['rmse']:.2f} points\n")
         f.write(f"  R²: {metrics['r_squared']:.3f}\n")
         f.write(f"  Directional Accuracy: {metrics['directional_accuracy']:.1%}\n")
-        f.write(f"  ATS Accuracy: {metrics['ats_accuracy']:.1%}\n")
-        f.write(f"  Betting ROI: {metrics['betting_roi']:.2%}\n")
+        f.write(f"  Within 3pt of actual: {metrics['within_3pt_rate']:.1%}\n")
         f.write("\nTop 10 Features:\n")
         sorted_importance = sorted(
             zip(feature_cols, importance_array),
@@ -391,7 +390,7 @@ def main(args):
     print(f"\n[RESULTS] Key Results:")
     print(f"  MAE: {metrics['mae']:.2f} points")
     print(f"  Directional Accuracy: {metrics['directional_accuracy']:.1%}")
-    print(f"  Betting ROI: {metrics['betting_roi']:.2%}")
+    print(f"  Within 3pt of actual: {metrics['within_3pt_rate']:.1%}")
     print(f"\n[FILES] Artifacts saved to: {args.output_dir}/")
     print(f"  - Model: {model_name}.json")
     print(f"  - Metadata: {model_name}_metadata.json")
