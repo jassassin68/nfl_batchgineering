@@ -459,31 +459,49 @@ def generate_predictions(
             pl.Series(name=col, values=values.flatten() if hasattr(values, 'flatten') else values)
         )
 
-    # Calculate edge and betting recommendation
+    # Calculate edge and betting recommendation via the shared betting layer
+    # (single source of truth -- same code that powers
+    # src/betting/recommend.py CLI and the weekly_bet_recommendations
+    # Dagster asset). Bankroll=1.0 here means stake_units is itself the
+    # Kelly fraction; predict.py's downstream Snowflake schema doesn't store
+    # stake_units, so the bankroll value is immaterial.
     if 'predicted_spread' in predictions:
-        pred_spread = predictions['predicted_spread'].flatten()
-        vegas_spread = games_df['vegas_spread'].to_numpy()
+        from src.betting.recommend import (
+            DEFAULT_EDGE_THRESHOLD,
+            DEFAULT_KELLY_MULT,
+            DEFAULT_ODDS,
+            SIDE_HOME,
+            SIDE_AWAY,
+            build_recommendations,
+        )
 
-        # Edge = how much model disagrees with Vegas
-        edge = pred_spread - vegas_spread
+        recs = build_recommendations(
+            results.select(['game_id', 'predicted_spread', 'vegas_spread']),
+            edge_threshold=DEFAULT_EDGE_THRESHOLD,
+            kelly_mult=DEFAULT_KELLY_MULT,
+            bankroll=1.0,
+            odds=DEFAULT_ODDS,
+        )
 
-        # Home win probability (logistic approximation)
-        home_win_prob = 1 / (1 + np.exp(-pred_spread / 5.5))
+        # Map side -> existing bet_recommendation labels expected by the
+        # Snowflake PREDICTIONS schema. Direction is now derived from the
+        # same sign convention as the backtest harness's verified ATS
+        # calculation, fixing the historical inversion bug.
+        side_to_label = {
+            SIDE_HOME: 'BET HOME',
+            SIDE_AWAY: 'BET AWAY',
+        }
+        bet_labels = [
+            side_to_label.get(s, 'NO BET') for s in recs['side'].to_list()
+        ]
 
-        # Betting recommendation based on edge threshold
-        recommendations = []
-        for e in edge:
-            if e >= 3.0:
-                recommendations.append('BET HOME')
-            elif e <= -3.0:
-                recommendations.append('BET AWAY')
-            else:
-                recommendations.append('NO BET')
-
-        # Confidence level
+        # Display-only confidence ladder. Not a betting input -- thresholds
+        # are intentionally looser than the bet threshold so the UI still
+        # signals where the model has *some* opinion.
+        edge_series = recs['edge_points'].to_list()
         confidence = []
-        for e in edge:
-            abs_edge = abs(e)
+        for e in edge_series:
+            abs_edge = abs(e) if e == e else 0.0  # nan-safe
             if abs_edge >= 5.0:
                 confidence.append('High')
             elif abs_edge >= 3.0:
@@ -492,10 +510,13 @@ def generate_predictions(
                 confidence.append('Low')
 
         results = results.with_columns([
-            pl.Series(name='edge', values=np.round(edge, 2)),
-            pl.Series(name='home_win_prob', values=np.round(home_win_prob, 3)),
-            pl.Series(name='bet_recommendation', values=recommendations),
-            pl.Series(name='confidence', values=confidence)
+            pl.Series(name='edge', values=np.round(np.array(edge_series), 2)),
+            pl.Series(
+                name='home_win_prob',
+                values=np.round(recs['home_win_prob'].to_numpy(), 3),
+            ),
+            pl.Series(name='bet_recommendation', values=bet_labels),
+            pl.Series(name='confidence', values=confidence),
         ])
 
     return results

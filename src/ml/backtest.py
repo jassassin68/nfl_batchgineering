@@ -52,7 +52,7 @@ from src.ml.utils.validation import (
 # Standard targets pulled from CLAUDE.md.
 ATS_BREAKEVEN = 0.5238  # break-even ATS rate at -110 odds (110 / 210)
 ATS_TARGET = 0.524  # CLAUDE.md threshold to "beat the juice"
-DEFAULT_EDGE_THRESHOLD = 3.0
+DEFAULT_EDGE_THRESHOLD = 4.0  # Step D: tightened from 3.0 for live betting
 DEFAULT_KELLY_MULT = 0.25
 DEFAULT_N_SEASONS_TRAIN = 5
 DEFAULT_AMERICAN_ODDS = -110
