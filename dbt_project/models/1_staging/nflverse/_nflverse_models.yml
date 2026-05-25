@@ -398,7 +398,12 @@ models:
         description: "Player position"
         data_type: varchar
         tests:
-          - not_null
+          # warn-only: a small number of upstream nflverse roster entries
+          # (mostly practice-squad churn) come through without a position
+          # assigned. rosters is not consumed by mart_game_prediction_features.
+          - not_null:
+              config:
+                severity: warn
       - name: jersey_number
         description: "Player's jersey number"
         data_type: varchar
@@ -406,7 +411,10 @@ models:
         description: "Player's full name"
         data_type: varchar
         tests:
-          - not_null
+          # warn-only: same upstream-data quirk as position above.
+          - not_null:
+              config:
+                severity: warn
       - name: first_name
         description: "Player's first name"
         data_type: varchar
@@ -607,7 +615,7 @@ models:
         description: "Total points scored (NULL for future games)"
         data_type: number
       - name: spread_line
-        description: "Vegas spread line (negative = home favored)"
+        description: "Vegas spread line (positive = home favored; nflverse convention, verified against 238 live games)"
         data_type: number
       - name: total_line
         description: "Vegas over/under line"

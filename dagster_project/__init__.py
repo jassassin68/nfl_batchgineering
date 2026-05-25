@@ -8,6 +8,7 @@ from dagster_project.assets.dbt_assets import nfl_dbt_assets
 from dagster_project.assets.predictions import weekly_predictions, test_predictions
 from dagster_project.assets.preflight import pipeline_preflight
 from dagster_project.assets.ml_training import trained_xgboost_model
+from dagster_project.assets.validation import model_validation_report
 from dagster_project.resources.dbt_resource import dbt_resource
 from dagster_project.jobs.weekly_pipeline import weekly_prediction_job
 from dagster_project.jobs.test_pipeline import test_prediction_job
@@ -25,6 +26,7 @@ defs = Definitions(
         trained_xgboost_model,
         pipeline_preflight,
         test_predictions,
+        model_validation_report,
     ],
     resources={
         "dbt": dbt_resource,

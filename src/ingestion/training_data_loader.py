@@ -17,6 +17,12 @@ from dataclasses import dataclass
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, OSError):
+    pass
+
 import polars as pl
 import snowflake.connector
 from snowflake.connector.errors import DatabaseError, ProgrammingError
@@ -108,8 +114,15 @@ class TrainingDataLoader:
     
     def _load_config(self) -> None:
         """Load and validate environment configuration"""
-        env_path = Path.cwd() / '.env'
-        if env_path.exists():
+        # Search CWD and its parents (so the loader works from any worktree
+        # subdirectory, not just the repo root where .env actually lives).
+        env_path = None
+        for parent in [Path.cwd(), *Path.cwd().parents]:
+            candidate = parent / '.env'
+            if candidate.exists():
+                env_path = candidate
+                break
+        if env_path is not None:
             load_dotenv(env_path)
             logger.debug(f"Loaded .env from {env_path}")
 
@@ -632,9 +645,12 @@ class TrainingDataLoader:
         if failed_years:
             logger.warning(f"⚠️ Failed to download {dataset} for years: {failed_years}")
         
-        # Combine all DataFrames efficiently
+        # Combine all DataFrames efficiently. Use diagonal_relaxed so cross-year
+        # schema drift (columns added/renamed by nflverse over time) doesn't
+        # crash the load -- missing columns become NULL for the years that lack
+        # them. All columns end up as VARCHAR anyway, so type coercion is safe.
         logger.info(f"🔗 Combining {len(dataframes)} years of data...")
-        combined_df = pl.concat(dataframes, how="vertical")
+        combined_df = pl.concat(dataframes, how="diagonal_relaxed")
         
         logger.info(
             f"📊 Combined dataset: {len(combined_df):,} rows, "

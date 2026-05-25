@@ -39,12 +39,9 @@ SELECT
     -- Vegas lines and betting context
     vegas_spread,
     vegas_total,
-    -- Calculate implied home win probability from spread
-    CASE
-        WHEN vegas_spread::number < 0 THEN 0.50 - (ABS(vegas_spread) * 0.033)
-        WHEN vegas_spread::number > 0 THEN 0.50 + (ABS(vegas_spread) * 0.033)
-        ELSE 0.50
-    END AS vegas_home_win_prob,
+    -- Implied home win probability via logistic mapping (bounded to (0, 1));
+    -- matches int_game_vegas_lines.sql and the logistic in src/ml/predict.py.
+    1.0 / (1.0 + EXP(-vegas_spread::number / 5.5)) AS vegas_home_win_prob,
     CASE
         WHEN ABS(vegas_spread) <= 2.5 THEN 'Pick-em'
         WHEN ABS(vegas_spread) <= 6.5 THEN 'Small'

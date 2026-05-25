@@ -37,14 +37,11 @@ SELECT
     spread_line AS vegas_spread,
     total_line AS vegas_total,
 
-    -- Derived: Implied probabilities
+    -- Derived: Implied home win probability via logistic mapping.
     -- spread_line follows nflverse convention: positive = home favored.
-    -- A +3 home spread implies ~60% home win probability (0.50 + 3*0.033).
-    CASE
-        WHEN spread_line < 0 THEN 0.50 - (ABS(spread_line) * 0.033)
-        WHEN spread_line > 0 THEN 0.50 + (spread_line * 0.033)
-        ELSE 0.50
-    END AS vegas_home_win_prob,
+    -- Logistic with scale 5.5 (same form used in src/ml/predict.py); naturally
+    -- bounded to (0, 1) so no extreme spread can produce a nonsense probability.
+    1.0 / (1.0 + EXP(-spread_line / 5.5)) AS vegas_home_win_prob,
 
     -- Betting context classification
     CASE

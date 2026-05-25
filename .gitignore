@@ -228,5 +228,11 @@ generated/
 output/
 exports/
 
+# Backtest reports (regenerate on demand; not committed)
+reports/
+
+# Training data loader transient log
+training_data_load.log
+
 # Kiro IDE specific
 .kiro/

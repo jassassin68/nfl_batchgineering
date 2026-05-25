@@ -24,9 +24,24 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ''
 Write-Host '=== dbt build (run + test) ===' -ForegroundColor Cyan
-$DbtExe = Join-Path $RepoRoot '.venv\Scripts\dbt.exe'
-if (-not (Test-Path $DbtExe)) {
-    Write-Host "dbt not found at $DbtExe - run 'pip install -r requirements.txt' in the repo-root venv" -ForegroundColor Red
+
+# Locate the venv's dbt. .venv usually lives at the repo root; when running
+# from a git worktree it may live one or more parents up, so walk upward.
+$DbtExe = $null
+$Dir = $RepoRoot
+while ($Dir -and -not $DbtExe) {
+    $candidate = Join-Path $Dir '.venv\Scripts\dbt.exe'
+    if (Test-Path $candidate) {
+        $DbtExe = $candidate
+        break
+    }
+    $parent = Split-Path -Parent $Dir
+    if ($parent -eq $Dir) { break }
+    $Dir = $parent
+}
+
+if (-not $DbtExe) {
+    Write-Host "dbt not found in any .venv\Scripts\dbt.exe from $RepoRoot upward - run 'pip install -r requirements.txt' in the repo-root venv" -ForegroundColor Red
     $failed = $true
 } else {
     & $DbtExe build --project-dir dbt_project
