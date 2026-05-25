@@ -38,11 +38,11 @@ SELECT
     total_line AS vegas_total,
 
     -- Derived: Implied probabilities
-    -- Spread of -3 implies ~60% win probability for favorite
-    -- Formula: 0.50 + (spread_points * 0.033) for favorites
+    -- spread_line follows nflverse convention: positive = home favored.
+    -- A +3 home spread implies ~60% home win probability (0.50 + 3*0.033).
     CASE
-        WHEN spread_line < 0 THEN 0.50 + (ABS(spread_line) * 0.033)
-        WHEN spread_line > 0 THEN 0.50 - (spread_line * 0.033)
+        WHEN spread_line < 0 THEN 0.50 - (ABS(spread_line) * 0.033)
+        WHEN spread_line > 0 THEN 0.50 + (spread_line * 0.033)
         ELSE 0.50
     END AS vegas_home_win_prob,
 
