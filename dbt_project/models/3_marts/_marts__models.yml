@@ -419,6 +419,69 @@ models:
             - team
             - season
 
+  - name: mart_bet_performance
+    description: >
+      Production scorecard for the betting system. Joins the recorded bet
+      ledger (ml.bets, staked only) to settled results (ml.bet_results) and
+      reports win rate, ROI, Brier, and closing-line value across rolling
+      windows, broken down by model_version so champion vs challenger
+      comparisons stay clean.
+    meta:
+      grain: "one row per rolling_window per model_version"
+      owner: "data-engineering"
+      primary_use: "Measuring whether the system is winning in production"
+    config:
+      materialized: view
+      tags: ['marts', 'betting', 'performance']
+    columns:
+      - name: rolling_window
+        description: "Time window: last_4_weeks, last_8_weeks, season_to_date, all_time"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['last_4_weeks', 'last_8_weeks', 'season_to_date', 'all_time']
+      - name: model_version
+        description: "Champion/challenger tag from ml.bets"
+        tests:
+          - not_null
+      - name: n_bets
+        description: "Number of settled, staked bets in the window"
+        tests:
+          - not_null
+      - name: win_rate
+        description: "Wins / (wins + losses); pushes excluded. NULL if no decisions"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+              config:
+                where: "win_rate is not null"
+      - name: roi
+        description: "sum(profit_units) / sum(stake_units)"
+      - name: brier
+        description: "Mean squared error of win_prob vs realized win/loss (lower is better)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+              config:
+                where: "brier is not null"
+      - name: avg_clv
+        description: "Average closing-line value in points (positive = edge)"
+      - name: clv_positive_rate
+        description: "Share of bets where the line moved in our favor"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+              config:
+                where: "clv_positive_rate is not null"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - rolling_window
+            - model_version
+
   - name: mart_model_validation
     description: >
       Model validation and backtesting framework for evaluating prediction accuracy.

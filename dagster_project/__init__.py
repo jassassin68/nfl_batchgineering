@@ -10,10 +10,13 @@ from dagster_project.assets.preflight import pipeline_preflight
 from dagster_project.assets.ml_training import trained_xgboost_model
 from dagster_project.assets.validation import model_validation_report
 from dagster_project.assets.recommendations import weekly_bet_recommendations
+from dagster_project.assets.reconciliation import bet_result_reconciliation
 from dagster_project.resources.dbt_resource import dbt_resource
 from dagster_project.jobs.weekly_pipeline import weekly_prediction_job
 from dagster_project.jobs.test_pipeline import test_prediction_job
+from dagster_project.jobs.reconciliation_pipeline import reconciliation_job
 from dagster_project.schedules.weekly_schedule import weekly_prediction_schedule
+from dagster_project.schedules.reconciliation_schedule import reconciliation_schedule
 
 # Load .env so Snowflake credentials and other env vars are available
 load_dotenv()
@@ -29,10 +32,11 @@ defs = Definitions(
         test_predictions,
         model_validation_report,
         weekly_bet_recommendations,
+        bet_result_reconciliation,
     ],
     resources={
         "dbt": dbt_resource,
     },
-    jobs=[weekly_prediction_job, test_prediction_job],
-    schedules=[weekly_prediction_schedule],
+    jobs=[weekly_prediction_job, test_prediction_job, reconciliation_job],
+    schedules=[weekly_prediction_schedule, reconciliation_schedule],
 )

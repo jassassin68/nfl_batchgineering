@@ -19,6 +19,7 @@ from dagster_project.constants import MODEL_DIR, PROJECT_ROOT
 
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.betting.ledger import DEFAULT_MODEL_VERSION, record_bets
 from src.betting.recommend import (
     DEFAULT_BANKROLL,
     DEFAULT_EDGE_THRESHOLD,
@@ -44,6 +45,12 @@ class RecommendationsConfig(Config):
     kelly_mult: float = DEFAULT_KELLY_MULT
     bankroll: float = DEFAULT_BANKROLL
     odds: float = DEFAULT_ODDS
+    # Tag separating champion vs challenger results in the bet ledger.
+    # Hand-maintained until Step F adds proper model versioning.
+    model_version: str = DEFAULT_MODEL_VERSION
+    # When False, recommendations are computed and reported but NOT written
+    # to ML.BETS (useful for dry-runs / backfills).
+    record_to_ledger: bool = True
 
 
 @asset(
@@ -112,6 +119,25 @@ def weekly_bet_recommendations(
 
     bets = recs.filter(pl.col("side") != SIDE_PASS)
     n_bets = bets.height
+
+    # Persist every non-pass recommendation to the bet ledger so production
+    # CLV/ROI can be measured (Step E). staked defaults to True.
+    bets_recorded = 0
+    if config.record_to_ledger:
+        bets_recorded = record_bets(
+            recs,
+            season=config.season,
+            week=config.week,
+            model_version=config.model_version,
+            bankroll=config.bankroll,
+            odds=config.odds,
+        )
+        context.log.info(
+            f"Recorded {bets_recorded} bets to ML.BETS "
+            f"(model_version={config.model_version})"
+        )
+    else:
+        context.log.info("record_to_ledger=False -- skipped ML.BETS write")
     total_stake = float(bets["stake_units"].sum()) if n_bets else 0.0
     max_stake = float(bets["stake_units"].max()) if n_bets else 0.0
     avg_edge = (
@@ -122,6 +148,8 @@ def weekly_bet_recommendations(
         metadata={
             "games_considered": MetadataValue.int(recs.height),
             "bets_count": MetadataValue.int(n_bets),
+            "bets_recorded": MetadataValue.int(bets_recorded),
+            "model_version": MetadataValue.text(config.model_version),
             "total_stake": MetadataValue.float(round(total_stake, 4)),
             "max_stake": MetadataValue.float(round(max_stake, 4)),
             "avg_edge_pts": MetadataValue.float(round(avg_edge, 3)),

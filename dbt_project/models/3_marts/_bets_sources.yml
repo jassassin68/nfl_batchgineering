@@ -1,0 +1,50 @@
+version: 2
+
+sources:
+  - name: ml
+    description: >
+      Machine-learning production tables written by the Python layer (not dbt):
+      model predictions and the Step E bet ledger. dbt reads these to build
+      performance marts.
+    database: PRODUCTION_ANALYTICS
+    schema: ML
+    meta:
+      owner: "data-engineering"
+      written_by: "src/betting/ledger.py, src/betting/reconcile.py"
+    tables:
+      - name: bets
+        identifier: BETS
+        description: >
+          One row per recommended bet, captured at recommendation time by
+          src/betting/ledger.py::record_bets. staked defaults to TRUE; the
+          user sets it FALSE for recommendations they chose not to place.
+        columns:
+          - name: bet_id
+            description: "UUID primary key"
+          - name: game_id
+            description: "Game the bet is on"
+          - name: model_version
+            description: "Champion/challenger tag for separable performance"
+          - name: vegas_spread_at_rec
+            description: "Spread (home-favored positive) when the bet was placed"
+          - name: win_prob
+            description: "Model win probability for the side bet (Brier input)"
+          - name: stake_units
+            description: "Amount staked, in bankroll units (ROI denominator)"
+          - name: staked
+            description: "TRUE if the bet was actually placed"
+
+      - name: bet_results
+        identifier: BET_RESULTS
+        description: >
+          One row per settled bet written by
+          src/betting/reconcile.py::reconcile_bets once the game completes.
+        columns:
+          - name: bet_id
+            description: "FK to ml.bets.bet_id"
+          - name: outcome
+            description: "win | loss | push"
+          - name: profit_units
+            description: "Net profit/loss in stake units (ROI numerator)"
+          - name: clv_points
+            description: "Closing-line value; positive = line moved in our favor"
